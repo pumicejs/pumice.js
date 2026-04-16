@@ -38,6 +38,7 @@
     "file-based-routing",
     "schema-validation"
   ],
+  "author": "Filip Podstawski <filip@surdic.de>",
   "license": "ISC",
   "dependencies": {
     "@hono/node-server": "^1.19.14",
