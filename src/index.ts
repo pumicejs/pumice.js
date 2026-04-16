@@ -38,9 +38,12 @@ export type {
   ClientManifest,
   ClientManifestFramework,
   ClientManifestMeta,
+  ClientManifestMethod,
   ClientManifestRoute,
+  ClientManifestRoutesByPath,
   RouteManifestSource,
 } from "./client-manifest.js";
+export { CLIENT_MANIFEST_METHOD_ORDER } from "./client-manifest.js";
 export {
   buildApiJsonSuccessBody,
   createApiJsonErrorResponse,

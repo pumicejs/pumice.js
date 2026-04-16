@@ -24,7 +24,7 @@ import {
   appendClientManifestRoute,
   finalizeClientManifest,
   type ClientManifest,
-  type ClientManifestRoute,
+  type ClientManifestRoutesByPath,
   type FinalizeClientManifestOptions,
 } from "../client-manifest.js";
 
@@ -49,7 +49,8 @@ const SUPPORTED_EXTENSIONS: ReadonlySet<SupportedExtension> = new Set([
 export class RouteManager {
   public readonly cache = new Map<string, string>();
   public readonly routeDescriptions = new Map<string, string>();
-  private readonly clientManifestRoutes: ClientManifestRoute[] = [];
+  private readonly clientManifestRoutesByPath: ClientManifestRoutesByPath =
+    new Map();
   private readonly basePathSegments: string[];
   private currentRouteFilePath: string | null = null;
   private defaultRouteConfig: RouteConfig<object> = {};
@@ -78,7 +79,7 @@ export class RouteManager {
       .sort((a, b) => a.localeCompare(b));
 
     this.cache.clear();
-    this.clientManifestRoutes.length = 0;
+    this.clientManifestRoutesByPath.clear();
 
     for (const routeFilePath of routeFiles) {
       this.currentRouteFilePath = routeFilePath;
@@ -127,7 +128,7 @@ export class RouteManager {
       this.cache.set(filePath, routePath);
     }
 
-    appendClientManifestRoute(this.clientManifestRoutes, {
+    appendClientManifestRoute(this.clientManifestRoutesByPath, {
       rootDirPath: this.rootDirPath,
       routeFilePath: filePath,
       urlPath: routePath,
@@ -141,15 +142,16 @@ export class RouteManager {
   }
 
   /**
-   * JSON-serializable manifest of every registered route: methods, merged config,
-   * human-readable descriptors, and Zod contracts as JSON Schema (for client codegen).
+   * JSON-serializable manifest of every registered route, grouped by path:
+   * path-level params and a per-HTTP-method map (merged config, descriptors,
+   * Zod contracts as JSON Schema for client codegen).
    */
   public getClientManifest(
     options?: FinalizeClientManifestOptions,
   ): ClientManifest {
     return finalizeClientManifest(
       this.defaultRouteConfig,
-      this.clientManifestRoutes,
+      this.clientManifestRoutesByPath,
       options,
     );
   }

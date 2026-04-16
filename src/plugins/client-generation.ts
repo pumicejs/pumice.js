@@ -5,7 +5,13 @@ import {
   createApiJsonSuccessResponse,
 } from "../http/json-envelope.js";
 import type { ServerPlugin } from "../types/plugin.js";
-import type { ClientManifest } from "../client-manifest.js";
+import type { RouteMethod } from "../types/route.js";
+import {
+  CLIENT_MANIFEST_METHOD_ORDER,
+  type ClientManifest,
+  type ClientManifestMethod,
+  type ClientManifestRoute,
+} from "../client-manifest.js";
 import type {
   ClientGenerationRouteConfigExtension,
   ClientManifestGenerationAccess,
@@ -27,9 +33,21 @@ export type ClientGenerationPluginOptions = {
 };
 
 function filterManifestByExposeClient(manifest: ClientManifest): ClientManifest {
-  const routes = manifest.routes.filter(
-    (route) => route.effectiveConfig["exposeClient"] !== false,
-  );
+  const routes: ClientManifestRoute[] = [];
+
+  for (const route of manifest.routes) {
+    const methods: Partial<Record<RouteMethod, ClientManifestMethod>> = {};
+    for (const method of CLIENT_MANIFEST_METHOD_ORDER) {
+      const entry = route.methods[method];
+      if (entry !== undefined && entry.effectiveConfig["exposeClient"] !== false) {
+        methods[method] = entry;
+      }
+    }
+    if (Object.keys(methods).length > 0) {
+      routes.push({ ...route, methods });
+    }
+  }
+
   return { ...manifest, routes };
 }
 

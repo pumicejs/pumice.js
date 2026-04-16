@@ -48,6 +48,11 @@ function isZodDateSchema(schema: unknown): boolean {
   return def?.type === "date";
 }
 
+function isZodVoidSchema(schema: unknown): boolean {
+  const def = (schema as { _zod?: { def?: { type?: string } } })._zod?.def;
+  return def?.type === "void";
+}
+
 let isoDatetimeJsonSchemaFragment: Record<string, unknown> | undefined;
 
 function getIsoDatetimeJsonSchemaFragment(): Record<string, unknown> {
@@ -62,6 +67,10 @@ function getIsoDatetimeJsonSchemaFragment(): Record<string, unknown> {
 }
 
 function zodToSerializableJsonSchema(schema: z.ZodTypeAny): unknown {
+  if (isZodVoidSchema(schema)) {
+    return { type: "void" };
+  }
+
   const payload = toJSONSchema(schema, {
     unrepresentable: "any",
     override({ zodSchema, jsonSchema }) {
@@ -125,13 +134,18 @@ function serializeThrows(throws: RouteThrowsSchema): Record<string, unknown> {
 
 function serializeResponse(response: RouteResponseSchema): unknown {
   if (isZodSchema(response)) {
+    if (isZodVoidSchema(response)) {
+      return { shape: "single", type: "void" };
+    }
     return { shape: "single", jsonSchema: zodToSerializableJsonSchema(response) };
   }
 
   const statuses: Record<string, unknown> = {};
   for (const [status, schema] of Object.entries(response)) {
     if (isZodSchema(schema)) {
-      statuses[status] = zodToSerializableJsonSchema(schema);
+      statuses[status] = isZodVoidSchema(schema)
+        ? { type: "void" }
+        : zodToSerializableJsonSchema(schema);
     }
   }
   return { shape: "statusMap", statuses };
@@ -171,6 +185,30 @@ function serializeRouteParams(paramsSchema: RouteParamsSchema | undefined): unkn
   return zodToSerializableJsonSchema(paramsSchema);
 }
 
+/** Order used when serializing {@link ClientManifestRoute.methods}. */
+export const CLIENT_MANIFEST_METHOD_ORDER: readonly RouteMethod[] = [
+  "get",
+  "post",
+  "put",
+  "patch",
+  "delete",
+  "options",
+  "any",
+];
+
+function orderManifestMethods<T>(
+  methods: Partial<Record<RouteMethod, T>>,
+): Partial<Record<RouteMethod, T>> {
+  const ordered: Partial<Record<RouteMethod, T>> = {};
+  for (const method of CLIENT_MANIFEST_METHOD_ORDER) {
+    const entry = methods[method];
+    if (entry !== undefined) {
+      ordered[method] = entry;
+    }
+  }
+  return ordered;
+}
+
 /** Route registration fields needed to build the client manifest (no handler). */
 export type RouteManifestSource = {
   method: RouteMethod;
@@ -181,17 +219,28 @@ export type RouteManifestSource = {
   beforeValidationHooks?: RouteBeforeValidationHook<object>[];
 };
 
-export type ClientManifestRoute = {
-  path: string;
-  method: RouteMethod;
-  routeFile: string;
+/** Per-HTTP-method entry under {@link ClientManifestRoute.methods}. */
+export type ClientManifestMethod = {
   descriptor?: string;
-  params?: unknown;
-  routeLevelConfig: Record<string, unknown>;
   effectiveConfig: Record<string, unknown>;
   beforeValidationHooksCount: number;
   schema?: unknown;
 };
+
+/**
+ * One URL path in the client manifest: source file, route-level config, path params,
+ * and a {@link ClientManifestRoute.methods} map (method-specific schema, hooks, merged config).
+ */
+export type ClientManifestRoute = {
+  path: string;
+  routeFile: string;
+  routeLevelConfig: Record<string, unknown>;
+  params?: unknown;
+  methods: Partial<Record<RouteMethod, ClientManifestMethod>>;
+};
+
+/** Mutable map keyed by URL path while routes are registered. */
+export type ClientManifestRoutesByPath = Map<string, ClientManifestRoute>;
 
 export type ClientManifestFramework = {
   name: string;
@@ -210,7 +259,7 @@ export type ClientManifestMeta = {
 };
 
 export type ClientManifest = {
-  version: 1;
+  version: 3;
   meta: ClientManifestMeta;
   defaultRouteConfig: Record<string, unknown>;
   routes: ClientManifestRoute[];
@@ -238,7 +287,7 @@ export function getServerFrameworkMetadata(): ClientManifestFramework {
 }
 
 export function appendClientManifestRoute(
-  manifestRoutes: ClientManifestRoute[],
+  routesByPath: ClientManifestRoutesByPath,
   options: {
     rootDirPath: string;
     routeFilePath: string;
@@ -261,23 +310,39 @@ export function appendClientManifestRoute(
     definition.config,
   ) as Record<string, unknown>;
 
-  manifestRoutes.push({
-    path: urlPath,
-    method: definition.method,
-    routeFile: relative(rootDirPath, routeFilePath).replaceAll("\\", "/"),
+  const methodEntry: ClientManifestMethod = {
     descriptor: definition.description,
-    params: serializeRouteParams(definition.params),
-    routeLevelConfig: JSON.parse(JSON.stringify(routeLevelConfig)) as Record<
-      string,
-      unknown
-    >,
     effectiveConfig: JSON.parse(JSON.stringify(effectiveConfig)) as Record<
       string,
       unknown
     >,
     beforeValidationHooksCount: definition.beforeValidationHooks?.length ?? 0,
     schema: serializeRouteSchema(definition.schema) as unknown,
-  });
+  };
+
+  const relativeRouteFile = relative(rootDirPath, routeFilePath).replaceAll(
+    "\\",
+    "/",
+  );
+
+  let routeEntry = routesByPath.get(urlPath);
+  if (!routeEntry) {
+    routeEntry = {
+      path: urlPath,
+      routeFile: relativeRouteFile,
+      routeLevelConfig: JSON.parse(JSON.stringify(routeLevelConfig)) as Record<
+        string,
+        unknown
+      >,
+      params: serializeRouteParams(definition.params),
+      methods: {},
+    };
+    routesByPath.set(urlPath, routeEntry);
+  } else if (routeEntry.params === undefined) {
+    routeEntry.params = serializeRouteParams(definition.params);
+  }
+
+  routeEntry.methods[definition.method] = methodEntry;
 }
 
 export type FinalizeClientManifestOptions = {
@@ -294,15 +359,31 @@ function buildManifestMeta(options: FinalizeClientManifestOptions): ClientManife
 
 export function finalizeClientManifest(
   defaultRouteConfig: RouteConfig<object>,
-  routes: readonly ClientManifestRoute[],
+  routesByPath: ReadonlyMap<string, ClientManifestRoute>,
   options: FinalizeClientManifestOptions = {},
 ): ClientManifest {
+  const routes = [...routesByPath.values()]
+    .sort((a, b) => a.path.localeCompare(b.path))
+    .map((route) => ({
+      path: route.path,
+      routeFile: route.routeFile,
+      routeLevelConfig: JSON.parse(
+        JSON.stringify(route.routeLevelConfig),
+      ) as Record<string, unknown>,
+      params: route.params,
+      methods: orderManifestMethods(
+        JSON.parse(JSON.stringify(route.methods)) as Partial<
+          Record<RouteMethod, ClientManifestMethod>
+        >,
+      ),
+    }));
+
   return {
-    version: 1,
+    version: 3,
     meta: buildManifestMeta(options),
     defaultRouteConfig: JSON.parse(
       JSON.stringify(defaultRouteConfig ?? {}),
     ) as Record<string, unknown>,
-    routes: [...routes],
+    routes,
   };
 }
