@@ -1,8 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { toJSONSchema } from "zod";
-import type { z } from "zod";
+import { z, toJSONSchema } from "zod";
 import { mergeRouteConfig } from "./config/routes.js";
 import type { RouteConfig } from "./types/config.js";
 import type { RouteBeforeValidationHook, RouteMethod } from "./types/route.js";
@@ -39,8 +38,42 @@ function isThrowsCodeSchemaMap(
   );
 }
 
+/**
+ * Zod `date` / `coerce.date()` cannot be expressed in JSON Schema; with
+ * `unrepresentable: "any"` they become `{}`. We substitute the same JSON Schema
+ * Zod emits for {@link z.iso.datetime} so clients can align with that contract.
+ */
+function isZodDateSchema(schema: unknown): boolean {
+  const def = (schema as { _zod?: { def?: { type?: string } } })._zod?.def;
+  return def?.type === "date";
+}
+
+let isoDatetimeJsonSchemaFragment: Record<string, unknown> | undefined;
+
+function getIsoDatetimeJsonSchemaFragment(): Record<string, unknown> {
+  if (!isoDatetimeJsonSchemaFragment) {
+    const full = toJSONSchema(z.iso.datetime(), {
+      unrepresentable: "any",
+    }) as Record<string, unknown>;
+    const { $schema: _drop, ...fragment } = full;
+    isoDatetimeJsonSchemaFragment = fragment;
+  }
+  return isoDatetimeJsonSchemaFragment;
+}
+
 function zodToSerializableJsonSchema(schema: z.ZodTypeAny): unknown {
-  const payload = toJSONSchema(schema, { unrepresentable: "any" });
+  const payload = toJSONSchema(schema, {
+    unrepresentable: "any",
+    override({ zodSchema, jsonSchema }) {
+      if (isZodDateSchema(zodSchema)) {
+        const json = jsonSchema as Record<string, unknown>;
+        for (const key of Object.keys(json)) {
+          delete json[key];
+        }
+        Object.assign(json, getIsoDatetimeJsonSchemaFragment());
+      }
+    },
+  });
   return JSON.parse(
     JSON.stringify(payload, (_key, value) =>
       typeof value === "bigint" ? value.toString() : value,
