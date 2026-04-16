@@ -101,7 +101,8 @@ export interface RouteBuilderMethodStage<
   TContextExtensions extends object = {},
   TFeatures extends RouteConfigCapabilities = {},
   TContextRefinementRules extends ContextRefinementRule = never,
-  TEffectiveConfig extends object = RouteConfig<TFeatures>,
+  TRouteConfig extends object = {},
+  TEffectiveConfig extends object = TRouteConfig,
 > {
   /**
    * Sets request body validation schema.
@@ -118,6 +119,7 @@ export interface RouteBuilderMethodStage<
           TContextExtensions,
           TFeatures,
           TContextRefinementRules,
+          TRouteConfig,
           TEffectiveConfig
         >,
     schema: TBodySchema,
@@ -128,6 +130,7 @@ export interface RouteBuilderMethodStage<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TRouteConfig,
     TEffectiveConfig
   >;
   /**
@@ -144,6 +147,7 @@ export interface RouteBuilderMethodStage<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TRouteConfig,
     DeepMergeObjects<TEffectiveConfig, TNextConfig>
   >;
   /**
@@ -158,6 +162,7 @@ export interface RouteBuilderMethodStage<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TRouteConfig,
     TEffectiveConfig
   >;
   /**
@@ -180,6 +185,7 @@ export interface RouteBuilderMethodStage<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TRouteConfig,
     TEffectiveConfig
   >;
   /**
@@ -194,6 +200,7 @@ export interface RouteBuilderMethodStage<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TRouteConfig,
     TEffectiveConfig
   >;
   /**
@@ -208,6 +215,7 @@ export interface RouteBuilderMethodStage<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TRouteConfig,
     TEffectiveConfig
   >;
   /**
@@ -225,6 +233,7 @@ export interface RouteBuilderMethodStage<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TRouteConfig,
     TEffectiveConfig
   >;
   /**
@@ -245,6 +254,7 @@ export interface RouteBuilderMethodStage<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TRouteConfig,
     TEffectiveConfig
   >;
   /**
@@ -264,7 +274,8 @@ export interface RouteBuilderMethodStage<
     TParamsSchema,
     TContextExtensions,
     TFeatures,
-    TContextRefinementRules
+    TContextRefinementRules,
+    TRouteConfig
   >;
 }
 
@@ -309,6 +320,7 @@ export interface RouteBuilderMethodSelectionStage<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TDefaultConfig,
     TDefaultConfig
   >;
   /**
@@ -321,6 +333,7 @@ export interface RouteBuilderMethodSelectionStage<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TDefaultConfig,
     TDefaultConfig
   >;
   /**
@@ -333,6 +346,7 @@ export interface RouteBuilderMethodSelectionStage<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TDefaultConfig,
     TDefaultConfig
   >;
   /**
@@ -345,6 +359,7 @@ export interface RouteBuilderMethodSelectionStage<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TDefaultConfig,
     TDefaultConfig
   >;
   /**
@@ -357,6 +372,7 @@ export interface RouteBuilderMethodSelectionStage<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TDefaultConfig,
     TDefaultConfig
   >;
   /**
@@ -369,6 +385,7 @@ export interface RouteBuilderMethodSelectionStage<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TDefaultConfig,
     TDefaultConfig
   >;
   /**
@@ -381,6 +398,7 @@ export interface RouteBuilderMethodSelectionStage<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TDefaultConfig,
     TDefaultConfig
   >;
 }
@@ -416,6 +434,7 @@ export class RouteBuilder<
     TSchema extends RouteSchema,
     TMethod extends RouteMethod,
     TMethodParamsSchema extends RouteParamsSchema | undefined,
+    TRouteConfig extends object,
     TEffectiveConfig extends object,
     TNextConfig extends RouteConfig<TFeatures>,
   >(
@@ -424,7 +443,7 @@ export class RouteBuilder<
       TContextExtensions,
       TFeatures,
       TContextRefinementRules,
-      TDefaultConfig
+      TRouteConfig
     > &
       RouteBuilderMethodStage<
         TSchema,
@@ -433,6 +452,7 @@ export class RouteBuilder<
         TContextExtensions,
         TFeatures,
         TContextRefinementRules,
+        TRouteConfig,
         TEffectiveConfig
       >,
     config: TNextConfig,
@@ -443,16 +463,25 @@ export class RouteBuilder<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TRouteConfig,
     DeepMergeObjects<TEffectiveConfig, TNextConfig>
   >;
-  public config(config: RouteConfig<TFeatures>): unknown {
+  public config<TNextConfig extends RouteConfig<TFeatures>>(
+    config: TNextConfig,
+  ): unknown {
     if (this.pendingMethod) {
       this.pendingConfig = mergeRouteConfig(this.pendingConfig ?? {}, config);
       return this;
     }
 
     this.defaultConfig = mergeRouteConfig(this.defaultConfig, config);
-    return this;
+    return this as unknown as RouteBuilderMethodSelectionStage<
+      TParamsSchema,
+      TContextExtensions,
+      TFeatures,
+      TContextRefinementRules,
+      DeepMergeObjects<TDefaultConfig, TNextConfig>
+    >;
   }
 
   public params<TNextParamsSchema extends RouteParamsSchema>(
@@ -487,6 +516,7 @@ export class RouteBuilder<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TDefaultConfig,
     TDefaultConfig
   > {
     return this.selectMethod("any");
@@ -499,6 +529,7 @@ export class RouteBuilder<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TDefaultConfig,
     TDefaultConfig
   > {
     return this.selectMethod("get");
@@ -511,6 +542,7 @@ export class RouteBuilder<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TDefaultConfig,
     TDefaultConfig
   > {
     return this.selectMethod("post");
@@ -523,6 +555,7 @@ export class RouteBuilder<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TDefaultConfig,
     TDefaultConfig
   > {
     return this.selectMethod("put");
@@ -535,6 +568,7 @@ export class RouteBuilder<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TDefaultConfig,
     TDefaultConfig
   > {
     return this.selectMethod("patch");
@@ -547,6 +581,7 @@ export class RouteBuilder<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TDefaultConfig,
     TDefaultConfig
   > {
     return this.selectMethod("delete");
@@ -559,6 +594,7 @@ export class RouteBuilder<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TDefaultConfig,
     TDefaultConfig
   > {
     return this.selectMethod("options");
@@ -585,6 +621,7 @@ export class RouteBuilder<
         TContextExtensions,
         TFeatures,
         TContextRefinementRules,
+        TDefaultConfig,
         TEffectiveConfig
       >,
     schema: TNextSchema & RouteSchemaDefinitionForMethod<TMethod>,
@@ -595,6 +632,7 @@ export class RouteBuilder<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TDefaultConfig,
     TEffectiveConfig
   > {
     this.assertPendingMethod("schema");
@@ -609,6 +647,7 @@ export class RouteBuilder<
       TContextExtensions,
       TFeatures,
       TContextRefinementRules,
+      TDefaultConfig,
       TEffectiveConfig
     >;
   }
@@ -636,6 +675,7 @@ export class RouteBuilder<
             TContextExtensions,
             TFeatures,
             TContextRefinementRules,
+            TDefaultConfig,
             TEffectiveConfig
           >,
     schema: TBodySchema,
@@ -646,6 +686,7 @@ export class RouteBuilder<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TDefaultConfig,
     TEffectiveConfig
   > {
     this.assertPendingMethod("body");
@@ -657,6 +698,7 @@ export class RouteBuilder<
       TContextExtensions,
       TFeatures,
       TContextRefinementRules,
+      TDefaultConfig,
       TEffectiveConfig
     >;
   }
@@ -682,6 +724,7 @@ export class RouteBuilder<
         TContextExtensions,
         TFeatures,
         TContextRefinementRules,
+        TDefaultConfig,
         TEffectiveConfig
       >,
     schema: TQuerySchema,
@@ -692,6 +735,7 @@ export class RouteBuilder<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TDefaultConfig,
     TEffectiveConfig
   > {
     this.assertPendingMethod("query");
@@ -703,6 +747,7 @@ export class RouteBuilder<
       TContextExtensions,
       TFeatures,
       TContextRefinementRules,
+      TDefaultConfig,
       TEffectiveConfig
     >;
   }
@@ -728,6 +773,7 @@ export class RouteBuilder<
         TContextExtensions,
         TFeatures,
         TContextRefinementRules,
+        TDefaultConfig,
         TEffectiveConfig
       >,
     schema: THeadersSchema,
@@ -738,6 +784,7 @@ export class RouteBuilder<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TDefaultConfig,
     TEffectiveConfig
   > {
     this.assertPendingMethod("headers");
@@ -749,6 +796,7 @@ export class RouteBuilder<
       TContextExtensions,
       TFeatures,
       TContextRefinementRules,
+      TDefaultConfig,
       TEffectiveConfig
     >;
   }
@@ -774,6 +822,7 @@ export class RouteBuilder<
         TContextExtensions,
         TFeatures,
         TContextRefinementRules,
+        TDefaultConfig,
         TEffectiveConfig
       >,
     schema: TResponseSchema & RouteResponseSchemaInput<TResponseSchema>,
@@ -784,6 +833,7 @@ export class RouteBuilder<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TDefaultConfig,
     TEffectiveConfig
   > {
     this.assertPendingMethod("response");
@@ -795,6 +845,7 @@ export class RouteBuilder<
       TContextExtensions,
       TFeatures,
       TContextRefinementRules,
+      TDefaultConfig,
       TEffectiveConfig
     >;
   }
@@ -820,6 +871,7 @@ export class RouteBuilder<
         TContextExtensions,
         TFeatures,
         TContextRefinementRules,
+        TDefaultConfig,
         TEffectiveConfig
       >,
     schema: TThrowsSchema & RouteThrowsSchemaInput<TThrowsSchema>,
@@ -830,6 +882,7 @@ export class RouteBuilder<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TDefaultConfig,
     TEffectiveConfig
   > {
     this.assertPendingMethod("throws");
@@ -841,6 +894,7 @@ export class RouteBuilder<
       TContextExtensions,
       TFeatures,
       TContextRefinementRules,
+      TDefaultConfig,
       TEffectiveConfig
     >;
   }
@@ -865,6 +919,7 @@ export class RouteBuilder<
         TContextExtensions,
         TFeatures,
         TContextRefinementRules,
+        TDefaultConfig,
         TEffectiveConfig
       >,
     handler: RouteHandler<
@@ -928,6 +983,7 @@ export class RouteBuilder<
         TContextExtensions,
         TFeatures,
         TContextRefinementRules,
+        TDefaultConfig,
         TEffectiveConfig
       >,
     description: string,
@@ -938,6 +994,7 @@ export class RouteBuilder<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TDefaultConfig,
     TEffectiveConfig
   > {
     this.assertPendingMethod("describe");
@@ -955,6 +1012,7 @@ export class RouteBuilder<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
+    TDefaultConfig,
     TDefaultConfig
   > {
     if (this.pendingMethod) {
@@ -974,6 +1032,7 @@ export class RouteBuilder<
       TContextExtensions,
       TFeatures,
       TContextRefinementRules,
+      TDefaultConfig,
       TDefaultConfig
     >;
   }
@@ -1004,30 +1063,35 @@ export function createRouteBuilder<
   TContextExtensions extends object,
   TFeatures extends RouteConfigCapabilities,
   TContextRefinementRules extends ContextRefinementRule,
+  TInitialRouteDefaults extends object = {},
 >(
   register: RouteRegistration<TContextExtensions, TFeatures>,
 ): RouteBuilderMethodSelectionStage<
   undefined,
   TContextExtensions,
   TFeatures,
-  TContextRefinementRules
+  TContextRefinementRules,
+  TInitialRouteDefaults
 >;
 export function createRouteBuilder<
   TContextExtensions extends object,
   TFeatures extends RouteConfigCapabilities,
   TContextRefinementRules extends ContextRefinementRule,
+  TInitialRouteDefaults extends object = {},
 >(
   register: RouteRegistration<TContextExtensions, TFeatures>,
 ): RouteBuilderMethodSelectionStage<
   undefined,
   TContextExtensions,
   TFeatures,
-  TContextRefinementRules
+  TContextRefinementRules,
+  TInitialRouteDefaults
 > {
   return new RouteBuilder<
     undefined,
     TContextExtensions,
     TFeatures,
-    TContextRefinementRules
+    TContextRefinementRules,
+    TInitialRouteDefaults
   >(register);
 }

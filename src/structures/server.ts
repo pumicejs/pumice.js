@@ -109,10 +109,9 @@ export class Server<
     return createRouteBuilder<
       TContextExtensions,
       TRouteConfigExtensions,
-      TContextRefinementRules
-    >((definition) =>
-      this.routes.addFromCurrentFile(definition),
-    );
+      TContextRefinementRules,
+      TDefaultRouteConfig
+    >((definition) => this.routes.addFromCurrentFile(definition));
   }
 
   /**
