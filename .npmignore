@@ -1,0 +1,16 @@
+src/
+node_modules/
+coverage/
+.turbo/
+
+tsconfig*.json
+*.tsbuildinfo
+
+.env
+.env.*
+
+.gitignore
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

@@ -1,0 +1,51 @@
+{
+  "name": "pumice.js",
+  "version": "0.0.1",
+  "description": "File-system based typed api server framework",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p .",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pumicejs/pumice.js.git"
+  },
+  "bugs": {
+    "url": "https://github.com/pumicejs/pumice.js/issues"
+  },
+  "homepage": "https://github.com/pumicejs/pumice.js#readme",
+  "keywords": [
+    "pumicejs",
+    "pumice.js",
+    "typescript",
+    "hono",
+    "zod",
+    "api",
+    "server",
+    "framework",
+    "file-based-routing",
+    "schema-validation"
+  ],
+  "license": "ISC",
+  "dependencies": {
+    "@hono/node-server": "^1.19.14",
+    "hono": "^4.12.14",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "typescript": "^6.0.2"
+  }
+}
