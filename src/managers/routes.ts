@@ -11,11 +11,9 @@ import {
   buildApiErrorResponse,
   createApiError,
   createExplicitRouteResponse,
-  createValidationErrorResponse,
   normalizeHandlerSuccessResult,
   normalizeHandlerThrownError,
   validateRouteRequest,
-  validateRouteResponsePayload,
   validateRouteThrownError,
 } from "../schema/runtime.js";
 import { getStatusMessage } from "../errors/api.js";
@@ -205,23 +203,12 @@ export class RouteManager {
         requestValidation.data.params;
 
       const originalJson = context.json.bind(context);
-      let usedContextJson = false;
 
       (context as unknown as { json: typeof context.json }).json = ((
         payload: unknown,
         status?: number,
       ) => {
-        usedContextJson = true;
         const responseStatus = typeof status === "number" ? status : 200;
-        const responseValidation = validateRouteResponsePayload(
-          definition.schema as RouteSchema | undefined,
-          payload,
-          responseStatus,
-        );
-
-        if (!responseValidation.ok) {
-          return responseValidation.response;
-        }
 
         if (responseStatus >= 200 && responseStatus <= 299) {
           return originalJson(
@@ -314,66 +301,11 @@ export class RouteManager {
         return buildApiErrorResponse(normalizedError);
       }
 
-      if (!definition.schema?.response || usedContextJson) {
-        if (handlerResult instanceof Response) {
-          return handlerResult;
-        }
-
-        const normalizedResult = normalizeHandlerSuccessResult(handlerResult);
-        return originalJson(
-          normalizedResult.responseBody as never,
-          normalizedResult.status as never,
-          normalizedResult.headers as never,
-        );
-      }
-
       if (handlerResult instanceof Response) {
-        if (handlerResult.status < 200 || handlerResult.status >= 300) {
-          return handlerResult;
-        }
-
-        let responsePayload: unknown;
-
-        try {
-          responsePayload = await handlerResult.clone().json();
-        } catch {
-          return createValidationErrorResponse(
-            500,
-            "Response body validation failed.",
-            "Response schema is configured, but handler returned a non-JSON response. Use plain return values, context.response(...), or context.json(...).",
-          );
-        }
-
-        const responseValidation = validateRouteResponsePayload(
-          definition.schema,
-          responsePayload,
-          handlerResult.status,
-        );
-
-        if (!responseValidation.ok) {
-          return responseValidation.response;
-        }
-
         return handlerResult;
       }
 
       const normalizedResult = normalizeHandlerSuccessResult(handlerResult);
-      const responseValidation = validateRouteResponsePayload(
-        definition.schema,
-        normalizedResult.payload,
-        normalizedResult.status,
-        {
-          strictStatus:
-            typeof handlerResult === "object" &&
-            handlerResult !== null &&
-            "_kind" in handlerResult,
-        },
-      );
-
-      if (!responseValidation.ok) {
-        return responseValidation.response;
-      }
-
       return originalJson(
         normalizedResult.responseBody as never,
         normalizedResult.status as never,

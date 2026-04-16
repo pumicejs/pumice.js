@@ -7,7 +7,6 @@ import type {
   RouteThrowsCodeSchemaMap,
   RouteThrowsSchema,
   RouteResponseSchema,
-  RouteResponseSchemaMap,
   RouteParamsSchema,
   RouteSchema,
 } from "../types/schema.js";
@@ -38,7 +37,6 @@ type ValidationFailure = {
 };
 
 type RequestValidationResult = RequestValidationSuccess | ValidationFailure;
-type ResponseValidationResult = { ok: true } | ValidationFailure;
 type ThrowValidationResult = { ok: true } | ValidationFailure;
 
 type NormalizedRouteError = {
@@ -165,12 +163,6 @@ async function readRequestBody(
   }
 }
 
-function isResponseStatusMap(
-  responseSchema: RouteResponseSchema,
-): responseSchema is RouteResponseSchemaMap {
-  return !("safeParse" in responseSchema);
-}
-
 function isZodSchema(value: unknown): value is z.ZodTypeAny {
   return typeof value === "object" && value !== null && "safeParse" in value;
 }
@@ -191,10 +183,6 @@ function isThrowsCodeSchemaMap(throwsSchema: unknown): throwsSchema is RouteThro
     !isZodSchema(throwsSchema) &&
     !isThrowDescriptor(throwsSchema)
   );
-}
-
-function isSuccessfulStatus(status: number): boolean {
-  return status >= 200 && status <= 299;
 }
 
 function isClientErrorStatus(status: number): boolean {
@@ -498,108 +486,6 @@ export async function validateRouteRequest(
       params: parsedParams,
     },
   };
-}
-
-export function validateRouteResponsePayload(
-  schema: RouteSchema | undefined,
-  payload: unknown,
-  status: number,
-  options: { strictStatus: boolean } = { strictStatus: true },
-): ResponseValidationResult {
-  const responseSchema = schema?.response;
-
-  if (!responseSchema) {
-    return { ok: true };
-  }
-
-  if (isResponseStatusMap(responseSchema)) {
-    if (!isSuccessfulStatus(status)) {
-      return {
-        ok: false,
-        response: createValidationErrorResponse(
-          500,
-          "Response status validation failed.",
-          {
-            status,
-            reason: "Only 2xx response statuses are allowed.",
-          },
-        ),
-      };
-    }
-
-    const allowedStatuses = Object.keys(responseSchema).map((value) =>
-      Number(value),
-    );
-    const statusSchema = responseSchema[status];
-
-    if (!options.strictStatus) {
-      const matchingSchema = Object.values(responseSchema).find((statusMapSchema) =>
-        statusMapSchema.safeParse(payload).success,
-      );
-
-      if (matchingSchema) {
-        return { ok: true };
-      }
-
-      return {
-        ok: false,
-        response: createValidationErrorResponse(
-          500,
-          "Response body validation failed.",
-          {
-            status,
-            allowedStatuses,
-            reason:
-              "Implicit return values must match at least one declared 2xx response schema.",
-          },
-        ),
-      };
-    }
-
-    if (!statusSchema) {
-      return {
-        ok: false,
-        response: createValidationErrorResponse(
-          500,
-          "Response status validation failed.",
-          {
-            status,
-            allowedStatuses,
-          },
-        ),
-      };
-    }
-
-    const statusResult = statusSchema.safeParse(payload);
-
-    if (!statusResult.success) {
-      return {
-        ok: false,
-        response: createValidationErrorResponse(
-          500,
-          `Response body validation failed for status ${status}.`,
-          statusResult.error.issues,
-        ),
-      };
-    }
-
-    return { ok: true };
-  }
-
-  const responseResult = responseSchema.safeParse(payload);
-
-  if (!responseResult.success) {
-    return {
-      ok: false,
-      response: createValidationErrorResponse(
-        500,
-        "Response body validation failed.",
-        responseResult.error.issues,
-      ),
-    };
-  }
-
-  return { ok: true };
 }
 
 export function validateRouteThrownError(
