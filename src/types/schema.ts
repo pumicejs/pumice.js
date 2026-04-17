@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import type { z } from "zod";
 import type { ApiError, ApiErrorIssue } from "../errors/api.js";
+import type { FileConfig, FilesConfig, UploadedFile } from "./file.js";
 
 export type Simplify<T> = { [TKey in keyof T]: T[TKey] } & {};
 
@@ -167,6 +168,22 @@ export type RouteSchema = {
    * - Descriptor/code-map `message` is used as fallback only when no message is passed to `context.error(...)`
    */
   throws?: RouteThrowsSchema;
+  /**
+   * Single-file upload contract declared by `.file(...)`.
+   *
+   * When present, the request body is parsed as `multipart/form-data` and the
+   * file at `config.fieldName` (default `"file"`) is surfaced at `c.file`.
+   * Any remaining form fields are validated against the `body` schema.
+   */
+  file?: FileConfig;
+  /**
+   * Multi-file upload contract declared by `.files(...)`.
+   *
+   * When present, the request body is parsed as `multipart/form-data` and all
+   * files under `config.fieldName` (default `"files"`) are surfaced at `c.files`.
+   * Any remaining form fields are validated against the `body` schema.
+   */
+  files?: FilesConfig;
 };
 
 type InferSchemaValue<TSchema extends z.ZodTypeAny | undefined> =
@@ -338,6 +355,20 @@ export type TypedRouteErrorFactory<
   error: ExpandUnion<InferThrowOptions<TThrows>>,
 ) => ApiError<ApiErrorIssue>;
 
+type InferFileContext<TSchema extends RouteSchema> = [TSchema["file"]] extends [
+  FileConfig,
+]
+  ? TSchema["file"] extends { required: false }
+    ? { file: UploadedFile | undefined }
+    : { file: UploadedFile }
+  : {};
+
+type InferFilesContext<TSchema extends RouteSchema> = [
+  TSchema["files"],
+] extends [FilesConfig]
+  ? { files: UploadedFile[] }
+  : {};
+
 export type TypedRouteContext<
   TSchema extends RouteSchema,
   TParamsSchema extends RouteParamsSchema | undefined = undefined,
@@ -380,4 +411,6 @@ export type TypedRouteContext<
    */
   error: TypedRouteErrorFactory<TSchema["throws"]>;
   }> &
+  InferFileContext<TSchema> &
+  InferFilesContext<TSchema> &
   TContextExtensions;

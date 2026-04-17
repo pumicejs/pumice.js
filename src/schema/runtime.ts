@@ -10,6 +10,12 @@ import type {
   RouteParamsSchema,
   RouteSchema,
 } from "../types/schema.js";
+import type {
+  AllowedFileType,
+  FileConfig,
+  FilesConfig,
+  UploadedFile,
+} from "../types/file.js";
 import {
   ApiError,
   getStatusMessage,
@@ -28,8 +34,82 @@ type RequestValidationSuccess = {
     query: unknown;
     headers: unknown;
     params: unknown;
+    file?: UploadedFile;
+    files?: UploadedFile[];
   };
 };
+
+const DEFAULT_FILE_FIELD_NAME = "file";
+const DEFAULT_FILES_FIELD_NAME = "files";
+
+type FileValidationIssue = {
+  message: string;
+  code: string;
+  fieldName: string;
+  file?: { name: string; type: string; size: number };
+};
+
+function isUploadedFile(value: unknown): value is File {
+  return typeof File !== "undefined" && value instanceof File;
+}
+
+function matchesAllowedType(file: File, allowed: AllowedFileType): boolean {
+  const normalizedAllowed = allowed.trim().toLowerCase();
+  if (normalizedAllowed.length === 0) {
+    return false;
+  }
+
+  if (normalizedAllowed.startsWith(".")) {
+    return file.name.toLowerCase().endsWith(normalizedAllowed);
+  }
+
+  if (normalizedAllowed.endsWith("/*")) {
+    const prefix = normalizedAllowed.slice(0, -1);
+    return file.type.toLowerCase().startsWith(prefix);
+  }
+
+  return file.type.toLowerCase() === normalizedAllowed;
+}
+
+function validateSingleFileAgainstConfig(
+  file: File,
+  fieldName: string,
+  config: Pick<FileConfig, "maxSize" | "minSize" | "allowedTypes">,
+): FileValidationIssue | null {
+  if (typeof config.maxSize === "number" && file.size > config.maxSize) {
+    return {
+      message: `File "${file.name}" exceeds max size of ${config.maxSize} bytes (got ${file.size}).`,
+      code: "file_too_large",
+      fieldName,
+      file: { name: file.name, type: file.type, size: file.size },
+    };
+  }
+
+  if (typeof config.minSize === "number" && file.size < config.minSize) {
+    return {
+      message: `File "${file.name}" is below min size of ${config.minSize} bytes (got ${file.size}).`,
+      code: "file_too_small",
+      fieldName,
+      file: { name: file.name, type: file.type, size: file.size },
+    };
+  }
+
+  if (config.allowedTypes && config.allowedTypes.length > 0) {
+    const matched = config.allowedTypes.some((allowed) =>
+      matchesAllowedType(file, allowed),
+    );
+    if (!matched) {
+      return {
+        message: `File "${file.name}" has disallowed type "${file.type}".`,
+        code: "file_type_not_allowed",
+        fieldName,
+        file: { name: file.name, type: file.type, size: file.size },
+      };
+    }
+  }
+
+  return null;
+}
 
 type ValidationFailure = {
   ok: false;
@@ -161,6 +241,160 @@ async function readRequestBody(
       }`,
     );
   }
+}
+
+type MultipartExtraction = {
+  body: Record<string, unknown>;
+  file?: File;
+  files?: File[];
+  issues: FileValidationIssue[];
+};
+
+async function extractMultipart(
+  context: Context,
+  fileConfig: FileConfig | undefined,
+  filesConfig: FilesConfig | undefined,
+): Promise<MultipartExtraction> {
+  const issues: FileValidationIssue[] = [];
+  let formData: FormData;
+
+  try {
+    formData = await context.req.formData();
+  } catch (error) {
+    throw new Error(
+      `Malformed multipart/form-data body${
+        error instanceof Error ? `: ${error.message}` : ""
+      }`,
+    );
+  }
+
+  const fileFieldName = fileConfig
+    ? (fileConfig.fieldName ?? DEFAULT_FILE_FIELD_NAME)
+    : undefined;
+  const filesFieldName = filesConfig
+    ? (filesConfig.fieldName ?? DEFAULT_FILES_FIELD_NAME)
+    : undefined;
+
+  let extractedFile: File | undefined;
+  let extractedFiles: File[] | undefined;
+
+  if (fileConfig && fileFieldName) {
+    const entries = formData.getAll(fileFieldName);
+    const fileEntries = entries.filter((entry): entry is File =>
+      isUploadedFile(entry),
+    );
+
+    if (entries.length > 1 || fileEntries.length > 1) {
+      issues.push({
+        message: `Field "${fileFieldName}" expects a single file upload.`,
+        code: "too_many_files",
+        fieldName: fileFieldName,
+      });
+    } else if (fileEntries.length === 0) {
+      if (fileConfig.required !== false) {
+        issues.push({
+          message: `Field "${fileFieldName}" is required.`,
+          code: "file_missing",
+          fieldName: fileFieldName,
+        });
+      }
+    } else {
+      const file = fileEntries[0]!;
+      const issue = validateSingleFileAgainstConfig(
+        file,
+        fileFieldName,
+        fileConfig,
+      );
+      if (issue) {
+        issues.push(issue);
+      } else {
+        extractedFile = file;
+      }
+    }
+  }
+
+  if (filesConfig && filesFieldName) {
+    const entries = formData.getAll(filesFieldName);
+    const fileEntries = entries.filter((entry): entry is File =>
+      isUploadedFile(entry),
+    );
+
+    const minCount = filesConfig.minCount ?? 0;
+    if (fileEntries.length < minCount) {
+      issues.push({
+        message: `Field "${filesFieldName}" requires at least ${minCount} files (got ${fileEntries.length}).`,
+        code: "too_few_files",
+        fieldName: filesFieldName,
+      });
+    }
+
+    if (
+      typeof filesConfig.maxCount === "number" &&
+      fileEntries.length > filesConfig.maxCount
+    ) {
+      issues.push({
+        message: `Field "${filesFieldName}" accepts at most ${filesConfig.maxCount} files (got ${fileEntries.length}).`,
+        code: "too_many_files",
+        fieldName: filesFieldName,
+      });
+    }
+
+    let totalSize = 0;
+    const accepted: File[] = [];
+    for (const file of fileEntries) {
+      totalSize += file.size;
+      const issue = validateSingleFileAgainstConfig(
+        file,
+        filesFieldName,
+        filesConfig,
+      );
+      if (issue) {
+        issues.push(issue);
+        continue;
+      }
+      accepted.push(file);
+    }
+
+    if (
+      typeof filesConfig.totalMaxSize === "number" &&
+      totalSize > filesConfig.totalMaxSize
+    ) {
+      issues.push({
+        message: `Field "${filesFieldName}" total size ${totalSize} bytes exceeds limit ${filesConfig.totalMaxSize}.`,
+        code: "files_total_too_large",
+        fieldName: filesFieldName,
+      });
+    }
+
+    extractedFiles = accepted;
+  }
+
+  const body: Record<string, unknown> = {};
+  const excludedFieldNames = new Set<string>();
+  if (fileFieldName) excludedFieldNames.add(fileFieldName);
+  if (filesFieldName) excludedFieldNames.add(filesFieldName);
+
+  const groupedByName = new Map<string, FormDataEntryValue[]>();
+  for (const [name, value] of formData.entries()) {
+    if (excludedFieldNames.has(name)) {
+      continue;
+    }
+    const bucket = groupedByName.get(name);
+    if (bucket) {
+      bucket.push(value);
+    } else {
+      groupedByName.set(name, [value]);
+    }
+  }
+
+  for (const [name, values] of groupedByName) {
+    const normalized = values.map((value) =>
+      isUploadedFile(value) ? value : typeof value === "string" ? value : value,
+    );
+    body[name] = normalized.length > 1 ? normalized : normalized[0];
+  }
+
+  return { body, file: extractedFile, files: extractedFiles, issues };
 }
 
 function isZodSchema(value: unknown): value is z.ZodTypeAny {
@@ -382,9 +616,48 @@ export async function validateRouteRequest(
   let parsedQuery: unknown = normalizeQuery(context.req.url);
   let parsedHeaders: unknown = normalizeHeaders(context.req.raw.headers);
   let parsedParams: unknown = normalizeParams(context, paramsSchema);
+  let parsedFile: UploadedFile | undefined;
+  let parsedFiles: UploadedFile[] | undefined;
   const validationErrors: Record<string, unknown> = {};
 
-  if (schema?.body) {
+  const expectsMultipart = Boolean(schema?.file || schema?.files);
+
+  if (expectsMultipart) {
+    try {
+      const extraction = await extractMultipart(
+        context,
+        schema?.file,
+        schema?.files,
+      );
+
+      if (extraction.issues.length > 0) {
+        validationErrors.files = extraction.issues;
+      }
+
+      parsedFile = extraction.file;
+      parsedFiles = extraction.files;
+
+      if (schema?.body) {
+        const bodyResult = schema.body.safeParse(extraction.body);
+        if (!bodyResult.success) {
+          validationErrors.body = bodyResult.error.issues;
+        } else {
+          parsedBody = bodyResult.data;
+        }
+      } else {
+        parsedBody = extraction.body;
+      }
+    } catch (error) {
+      validationErrors.body = [
+        {
+          message: "Invalid multipart form body.",
+          code: "invalid_body",
+          reason:
+            error instanceof Error ? error.message : "Unknown parsing error",
+        },
+      ];
+    }
+  } else if (schema?.body) {
     let parsedRequestBody: unknown;
     let rawRequestBody = "";
 
@@ -484,6 +757,8 @@ export async function validateRouteRequest(
       query: parsedQuery,
       headers: parsedHeaders,
       params: parsedParams,
+      file: parsedFile,
+      files: parsedFiles,
     },
   };
 }

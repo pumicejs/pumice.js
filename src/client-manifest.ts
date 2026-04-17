@@ -173,6 +173,26 @@ function serializeRouteSchema(schema: RouteSchema | undefined): unknown {
   if (schema.throws !== undefined) {
     result.throws = serializeThrows(schema.throws);
   }
+  if (schema.file !== undefined) {
+    result.file = {
+      fieldName: schema.file.fieldName ?? "file",
+      maxSize: schema.file.maxSize,
+      minSize: schema.file.minSize,
+      allowedTypes: schema.file.allowedTypes,
+      required: schema.file.required ?? true,
+    };
+  }
+  if (schema.files !== undefined) {
+    result.files = {
+      fieldName: schema.files.fieldName ?? "files",
+      maxSize: schema.files.maxSize,
+      minSize: schema.files.minSize,
+      totalMaxSize: schema.files.totalMaxSize,
+      allowedTypes: schema.files.allowedTypes,
+      minCount: schema.files.minCount,
+      maxCount: schema.files.maxCount,
+    };
+  }
 
   return Object.keys(result).length > 0 ? result : undefined;
 }

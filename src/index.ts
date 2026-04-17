@@ -31,6 +31,12 @@ export type {
   RouteThrowsSchema,
 } from "./types/schema.js";
 export type {
+  FileConfig,
+  FilesConfig,
+  UploadedFile,
+  AllowedFileType,
+} from "./types/file.js";
+export type {
   RouteBuilderMethodStage,
   RouteBuilderMethodSelectionStage,
 } from "./builders/route.js";
