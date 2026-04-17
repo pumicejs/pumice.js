@@ -173,12 +173,28 @@ function hasNumericJsonType(value: unknown): boolean {
   );
 }
 
-function getNumericParamKeys(paramsSchema: RouteParamsSchema | undefined): Set<string> {
-  if (!paramsSchema) {
+function hasBooleanJsonType(value: unknown): boolean {
+  if (value === "boolean") {
+    return true;
+  }
+
+  return (
+    Array.isArray(value) && value.some((entry) => entry === "boolean")
+  );
+}
+
+/**
+ * Top-level object keys whose JSON Schema type is numeric — same idea as path
+ * params: `multipart/form-data` and query values arrive as strings.
+ */
+function getNumericKeysFromObjectZodSchema(
+  schema: z.ZodTypeAny | undefined,
+): Set<string> {
+  if (!schema) {
     return new Set<string>();
   }
 
-  const jsonSchema = toJSONSchema(paramsSchema, { unrepresentable: "any" }) as {
+  const jsonSchema = toJSONSchema(schema, { unrepresentable: "any" }) as {
     type?: unknown;
     properties?: Record<string, { type?: unknown }>;
   };
@@ -189,9 +205,92 @@ function getNumericParamKeys(paramsSchema: RouteParamsSchema | undefined): Set<s
 
   return new Set<string>(
     Object.entries(jsonSchema.properties)
-      .filter(([, schema]) => hasNumericJsonType(schema.type))
+      .filter(([, propertySchema]) => hasNumericJsonType(propertySchema.type))
       .map(([key]) => key),
   );
+}
+
+function getBooleanKeysFromObjectZodSchema(
+  schema: z.ZodTypeAny | undefined,
+): Set<string> {
+  if (!schema) {
+    return new Set<string>();
+  }
+
+  const jsonSchema = toJSONSchema(schema, { unrepresentable: "any" }) as {
+    type?: unknown;
+    properties?: Record<string, { type?: unknown }>;
+  };
+
+  if (jsonSchema.type !== "object" || !jsonSchema.properties) {
+    return new Set<string>();
+  }
+
+  return new Set<string>(
+    Object.entries(jsonSchema.properties)
+      .filter(([, propertySchema]) => hasBooleanJsonType(propertySchema.type))
+      .map(([key]) => key),
+  );
+}
+
+function coerceScalarStringForFormData(
+  value: string,
+  kind: "number" | "boolean",
+): unknown {
+  if (kind === "number") {
+    if (value.trim() === "") {
+      return value;
+    }
+    const n = Number(value);
+    return Number.isNaN(n) ? value : n;
+  }
+
+  const t = value.trim().toLowerCase();
+  if (t === "true" || t === "1") {
+    return true;
+  }
+  if (t === "false" || t === "0") {
+    return false;
+  }
+  return value;
+}
+
+function coerceFormDataFieldValue(
+  value: unknown,
+  kind: "number" | "boolean",
+): unknown {
+  if (Array.isArray(value)) {
+    return value.map((entry) =>
+      typeof entry === "string"
+        ? coerceScalarStringForFormData(entry, kind)
+        : entry,
+    );
+  }
+  if (typeof value === "string") {
+    return coerceScalarStringForFormData(value, kind);
+  }
+  return value;
+}
+
+function coerceMultipartFormBodyForZodSchema(
+  body: Record<string, unknown>,
+  bodySchema: z.ZodTypeAny,
+): Record<string, unknown> {
+  const numericKeys = getNumericKeysFromObjectZodSchema(bodySchema);
+  const booleanKeys = getBooleanKeysFromObjectZodSchema(bodySchema);
+  if (numericKeys.size === 0 && booleanKeys.size === 0) {
+    return body;
+  }
+
+  const out: Record<string, unknown> = { ...body };
+  for (const key of Object.keys(out)) {
+    if (numericKeys.has(key)) {
+      out[key] = coerceFormDataFieldValue(out[key], "number");
+    } else if (booleanKeys.has(key)) {
+      out[key] = coerceFormDataFieldValue(out[key], "boolean");
+    }
+  }
+  return out;
 }
 
 function normalizeParams(
@@ -203,7 +302,7 @@ function normalizeParams(
     return {};
   }
 
-  const numericParamKeys = getNumericParamKeys(paramsSchema);
+  const numericParamKeys = getNumericKeysFromObjectZodSchema(paramsSchema);
   return Object.fromEntries(
     Object.entries(params).map(([key, value]) => {
       const normalizedValue = String(value);
@@ -638,7 +737,11 @@ export async function validateRouteRequest(
       parsedFiles = extraction.files;
 
       if (schema?.body) {
-        const bodyResult = schema.body.safeParse(extraction.body);
+        const bodyForParse = coerceMultipartFormBodyForZodSchema(
+          extraction.body,
+          schema.body,
+        );
+        const bodyResult = schema.body.safeParse(bodyForParse);
         if (!bodyResult.success) {
           validationErrors.body = bodyResult.error.issues;
         } else {
