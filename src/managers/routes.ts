@@ -105,6 +105,44 @@ function procedureAppliesToMethod(
   return methods.includes(method as never);
 }
 
+function isDynamicSegment(segment: string): boolean {
+  return segment.startsWith("[") && segment.endsWith("]");
+}
+
+/**
+ * Registers routes so static segments beat dynamic ones at the same depth.
+ *
+ * Without this, discovery of `/users/[id]/route.ts` and `/users/me/route.ts`
+ * loads `[id]` first (ASCII `[` < `m`); Hono's router then matches `/users/:id`
+ * before `/users/me` for a request to `/users/me`. Comparing segment-by-segment
+ * and ordering dynamic `[x]` segments after any static peer fixes this.
+ */
+function compareRouteFilePaths(filePathA: string, filePathB: string): number {
+  const segmentsA = filePathA.replaceAll("\\", "/").split("/").filter(Boolean);
+  const segmentsB = filePathB.replaceAll("\\", "/").split("/").filter(Boolean);
+  const sharedLength = Math.min(segmentsA.length, segmentsB.length);
+
+  for (let index = 0; index < sharedLength; index += 1) {
+    const segmentA = segmentsA[index]!;
+    const segmentB = segmentsB[index]!;
+
+    if (segmentA === segmentB) {
+      continue;
+    }
+
+    const dynamicA = isDynamicSegment(segmentA);
+    const dynamicB = isDynamicSegment(segmentB);
+
+    if (dynamicA !== dynamicB) {
+      return dynamicA ? 1 : -1;
+    }
+
+    return segmentA.localeCompare(segmentB);
+  }
+
+  return segmentsA.length - segmentsB.length;
+}
+
 /**
  * Executes a single procedure's handler, injecting the use-site config, and
  * merges any returned contributions into the accumulated `c.procedures` bag.
@@ -165,7 +203,7 @@ export class RouteManager {
     const files = await this.walkFiles(this.rootDirPath);
     const routeFiles = files
       .filter((filePath) => this.isRouteFile(filePath))
-      .sort((a, b) => a.localeCompare(b));
+      .sort(compareRouteFilePaths);
 
     this.cache.clear();
     this.clientManifestRoutesByPath.clear();
