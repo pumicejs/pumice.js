@@ -201,6 +201,14 @@ export class RouteManager {
         requestValidation.data.headers;
       (context as unknown as { params: unknown }).params =
         requestValidation.data.params;
+      if (definition.schema?.file) {
+        (context as unknown as { file: unknown }).file =
+          requestValidation.data.file;
+      }
+      if (definition.schema?.files) {
+        (context as unknown as { files: unknown }).files =
+          requestValidation.data.files ?? [];
+      }
 
       const originalJson = context.json.bind(context);
 

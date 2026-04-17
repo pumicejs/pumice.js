@@ -17,6 +17,7 @@ import type {
   RouteThrowsSchemaMap,
   RouteThrowsSchemaInput,
 } from "../types/schema.js";
+import type { FileConfig, FilesConfig } from "../types/file.js";
 import type { z } from "zod";
 import { mergeRouteConfig } from "../config/routes.js";
 
@@ -61,6 +62,14 @@ type GetRouteSchemaDefinition = {
    * GET routes cannot define request body schemas.
    */
   body?: never;
+  /**
+   * GET routes cannot accept file uploads.
+   */
+  file?: never;
+  /**
+   * GET routes cannot accept file uploads.
+   */
+  files?: never;
   /**
    * Query string schema.
    *
@@ -249,6 +258,72 @@ export interface RouteBuilderMethodStage<
     schema: TThrowsSchema & RouteThrowsSchemaInput<TThrowsSchema>,
   ): RouteBuilderMethodStage<
     MergeRouteSchemaPatch<TSchema, { throws: TThrowsSchema }>,
+    TMethod,
+    TParamsSchema,
+    TContextExtensions,
+    TFeatures,
+    TContextRefinementRules,
+    TRouteConfig,
+    TEffectiveConfig
+  >;
+  /**
+   * Declares a single-file upload for this route.
+   *
+   * The request body is parsed as `multipart/form-data` and the file at
+   * `config.fieldName` (default `"file"`) is surfaced on `c.file`. Remaining
+   * form fields are still validated against the `body` schema (if present).
+   *
+   * GET routes are blocked at type level via `this: never`.
+   */
+  file<TFileConfig extends FileConfig = FileConfig>(
+    this: TMethod extends "get"
+      ? never
+      : RouteBuilderMethodStage<
+          TSchema,
+          TMethod,
+          TParamsSchema,
+          TContextExtensions,
+          TFeatures,
+          TContextRefinementRules,
+          TRouteConfig,
+          TEffectiveConfig
+        >,
+    config?: TFileConfig,
+  ): RouteBuilderMethodStage<
+    MergeRouteSchemaPatch<TSchema, { file: TFileConfig }>,
+    TMethod,
+    TParamsSchema,
+    TContextExtensions,
+    TFeatures,
+    TContextRefinementRules,
+    TRouteConfig,
+    TEffectiveConfig
+  >;
+  /**
+   * Declares a multi-file upload for this route.
+   *
+   * The request body is parsed as `multipart/form-data` and all files under
+   * `config.fieldName` (default `"files"`) are surfaced on `c.files`. Remaining
+   * form fields are still validated against the `body` schema (if present).
+   *
+   * GET routes are blocked at type level via `this: never`.
+   */
+  files<TFilesConfig extends FilesConfig = FilesConfig>(
+    this: TMethod extends "get"
+      ? never
+      : RouteBuilderMethodStage<
+          TSchema,
+          TMethod,
+          TParamsSchema,
+          TContextExtensions,
+          TFeatures,
+          TContextRefinementRules,
+          TRouteConfig,
+          TEffectiveConfig
+        >,
+    config?: TFilesConfig,
+  ): RouteBuilderMethodStage<
+    MergeRouteSchemaPatch<TSchema, { files: TFilesConfig }>,
     TMethod,
     TParamsSchema,
     TContextExtensions,
@@ -639,6 +714,23 @@ export class RouteBuilder<
     if (this.pendingMethod === "get" && "body" in schema && schema.body !== undefined) {
       throw new Error("GET routes cannot define a request body schema.");
     }
+    if (
+      this.pendingMethod === "get" &&
+      (("file" in schema && schema.file !== undefined) ||
+        ("files" in schema && schema.files !== undefined))
+    ) {
+      throw new Error("GET routes cannot accept file uploads.");
+    }
+    if (
+      "file" in schema &&
+      schema.file !== undefined &&
+      "files" in schema &&
+      schema.files !== undefined
+    ) {
+      throw new Error(
+        "Cannot declare both file and files on the same route — choose one.",
+      );
+    }
     this.pendingSchema = { ...schema };
     return this as unknown as RouteBuilderMethodStage<
       TNextSchema,
@@ -850,6 +942,108 @@ export class RouteBuilder<
     >;
   }
 
+  public file<
+    TCurrentSchema extends RouteSchema,
+    TMethod extends RouteMethod,
+    TMethodParamsSchema extends RouteParamsSchema | undefined,
+    TFileConfig extends FileConfig,
+    TEffectiveConfig extends object,
+  >(
+    this: TMethod extends "get"
+      ? never
+      : RouteBuilder<
+          TParamsSchema,
+          TContextExtensions,
+          TFeatures,
+          TContextRefinementRules,
+          TDefaultConfig
+        > &
+          RouteBuilderMethodStage<
+            TCurrentSchema,
+            TMethod,
+            TMethodParamsSchema,
+            TContextExtensions,
+            TFeatures,
+            TContextRefinementRules,
+            TDefaultConfig,
+            TEffectiveConfig
+          >,
+    config?: TFileConfig,
+  ): RouteBuilderMethodStage<
+    MergeRouteSchemaPatch<TCurrentSchema, { file: TFileConfig }>,
+    TMethod,
+    TMethodParamsSchema,
+    TContextExtensions,
+    TFeatures,
+    TContextRefinementRules,
+    TDefaultConfig,
+    TEffectiveConfig
+  > {
+    this.assertPendingMethod("file");
+    this.applySchemaPatch({ file: (config ?? {}) as FileConfig });
+    return this as unknown as RouteBuilderMethodStage<
+      MergeRouteSchemaPatch<TCurrentSchema, { file: TFileConfig }>,
+      TMethod,
+      TMethodParamsSchema,
+      TContextExtensions,
+      TFeatures,
+      TContextRefinementRules,
+      TDefaultConfig,
+      TEffectiveConfig
+    >;
+  }
+
+  public files<
+    TCurrentSchema extends RouteSchema,
+    TMethod extends RouteMethod,
+    TMethodParamsSchema extends RouteParamsSchema | undefined,
+    TFilesConfig extends FilesConfig,
+    TEffectiveConfig extends object,
+  >(
+    this: TMethod extends "get"
+      ? never
+      : RouteBuilder<
+          TParamsSchema,
+          TContextExtensions,
+          TFeatures,
+          TContextRefinementRules,
+          TDefaultConfig
+        > &
+          RouteBuilderMethodStage<
+            TCurrentSchema,
+            TMethod,
+            TMethodParamsSchema,
+            TContextExtensions,
+            TFeatures,
+            TContextRefinementRules,
+            TDefaultConfig,
+            TEffectiveConfig
+          >,
+    config?: TFilesConfig,
+  ): RouteBuilderMethodStage<
+    MergeRouteSchemaPatch<TCurrentSchema, { files: TFilesConfig }>,
+    TMethod,
+    TMethodParamsSchema,
+    TContextExtensions,
+    TFeatures,
+    TContextRefinementRules,
+    TDefaultConfig,
+    TEffectiveConfig
+  > {
+    this.assertPendingMethod("files");
+    this.applySchemaPatch({ files: (config ?? {}) as FilesConfig });
+    return this as unknown as RouteBuilderMethodStage<
+      MergeRouteSchemaPatch<TCurrentSchema, { files: TFilesConfig }>,
+      TMethod,
+      TMethodParamsSchema,
+      TContextExtensions,
+      TFeatures,
+      TContextRefinementRules,
+      TDefaultConfig,
+      TEffectiveConfig
+    >;
+  }
+
   public throws<
     TCurrentSchema extends RouteSchema,
     TMethod extends RouteMethod,
@@ -1048,6 +1242,22 @@ export class RouteBuilder<
   private applySchemaPatch(schemaPatch: Partial<RouteSchema>): void {
     if (this.pendingMethod === "get" && schemaPatch.body !== undefined) {
       throw new Error("GET routes cannot define a request body schema.");
+    }
+    if (
+      this.pendingMethod === "get" &&
+      (schemaPatch.file !== undefined || schemaPatch.files !== undefined)
+    ) {
+      throw new Error("GET routes cannot accept file uploads.");
+    }
+    if (schemaPatch.file !== undefined && this.pendingSchema?.files !== undefined) {
+      throw new Error(
+        "Cannot combine .file(...) and .files(...) on the same route — choose one.",
+      );
+    }
+    if (schemaPatch.files !== undefined && this.pendingSchema?.file !== undefined) {
+      throw new Error(
+        "Cannot combine .file(...) and .files(...) on the same route — choose one.",
+      );
     }
     this.pendingSchema = {
       ...(this.pendingSchema ?? {}),
