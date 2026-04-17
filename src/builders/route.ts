@@ -188,10 +188,12 @@ export interface RouteBuilderMethodStage<
     TProcedures
   >;
   /**
-   * Replaces the current route schema in one call.
+   * Merges into the current route schema (keys you omit are kept, including
+   * `file` / `files` from `.file()` / `.files()`).
    *
    * Available keys:
    * - `body`, `query`, `headers`
+   * - `file`, `files` (multipart upload contracts)
    * - `response` (2xx schemas only)
    * - `throws` (4xx schemas only; supports descriptor/code-map entries)
    *
@@ -835,7 +837,8 @@ export class RouteBuilder<
         "Cannot declare both file and files on the same route — choose one.",
       );
     }
-    this.pendingSchema = { ...schema };
+    // Merge so `.file()` / `.body()` / etc. are not wiped when followed by `.schema({ ... })`.
+    this.pendingSchema = { ...(this.pendingSchema ?? {}), ...schema };
     return this as unknown as RouteBuilderMethodStage<
       TNextSchema,
       TMethod,
