@@ -373,6 +373,25 @@ export type TypedRouteContext<
   TSchema extends RouteSchema,
   TParamsSchema extends RouteParamsSchema | undefined = undefined,
   TContextExtensions extends object = {},
+> = TypedRouteContextWithParamsValue<
+  TSchema,
+  InferSchemaValue<TParamsSchema>,
+  {},
+  TContextExtensions
+>;
+
+/**
+ * Lower-level context type that accepts an already-resolved params value
+ * (e.g. merged across procedures + route) and a typed `procedures` bag.
+ *
+ * `TypedRouteContext` delegates to this — use this form when you already
+ * computed the merged params shape upstream in the builder.
+ */
+export type TypedRouteContextWithParamsValue<
+  TSchema extends RouteSchema,
+  TParamsValue,
+  TProcedures extends object = {},
+  TContextExtensions extends object = {},
 > = Omit<
   Context,
   "json" | "body" | "error"
@@ -393,7 +412,12 @@ export type TypedRouteContext<
   /**
    * Parsed and validated route params from dynamic path segments.
    */
-  params: InferSchemaValue<TParamsSchema>;
+  params: TParamsValue;
+  /**
+   * Contributions returned by applied procedures, keyed by the property
+   * names they returned from their handlers.
+   */
+  procedures: TProcedures;
   /**
    * Sends JSON response payloads constrained by `response` schema.
    */

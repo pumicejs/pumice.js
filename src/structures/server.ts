@@ -6,6 +6,10 @@ import {
   createRouteBuilder,
   type RouteBuilderMethodSelectionStage,
 } from "../builders/route.js";
+import {
+  createProcedureBuilder,
+  type ProcedureBuilderStage,
+} from "../builders/procedure.js";
 import { mergeRouteConfig } from "../config/routes.js";
 import type { RouteConfig } from "../types/config.js";
 import { getStatusMessage } from "../errors/api.js";
@@ -115,6 +119,30 @@ export class Server<
   }
 
   /**
+   * Starts a reusable procedure definition.
+   *
+   * Procedures encapsulate shared request-time logic (param validation,
+   * auth checks, resource loading) and contribute typed values to
+   * `c.procedures` on routes that attach them via `route().procedure(...)`.
+   *
+   * Example:
+   * ```ts
+   * const userProcedure = server.procedure()
+   *   .config<{ skipOwnershipCheck?: boolean }>()
+   *   .params(z.object({ userId: z.number() }))
+   *   .handle(async (c) => {
+   *     const user = await repos.users.findUnique({ where: { id: c.params.userId } }, true);
+   *     if (!user) throw 404;
+   *     if (!c.config.skipOwnershipCheck && user.id !== c.auth.data.user.id) throw 403;
+   *     return { user };
+   *   });
+   * ```
+   */
+  public procedure(): ProcedureBuilderStage<{}, undefined, TContextExtensions> {
+    return createProcedureBuilder<TContextExtensions>();
+  }
+
+  /**
    * Returns a JSON-serializable manifest of all routes (see {@link RouteManager.getClientManifest}).
    */
   public getClientManifest(): ClientManifest {
@@ -184,7 +212,7 @@ export class Server<
 
     for (const plugin of this.plugins) {
       await plugin.apply({
-        server: this,
+        server: this as unknown as Server<object, object, never>,
         app: this.app,
       });
     }

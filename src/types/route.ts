@@ -4,11 +4,15 @@ import type {
   RouteParamsSchema,
   RouteSchema,
   Simplify,
-  TypedRouteContext,
+  TypedRouteContextWithParamsValue,
 } from "./schema.js";
 import type { RouteConfig } from "./config.js";
+import type { AnyAppliedRouteProcedure } from "./procedure.js";
 import type { Context } from "hono";
 import type { z } from "zod";
+
+type InferParamsValue<TParamsSchema extends RouteParamsSchema | undefined> =
+  TParamsSchema extends z.ZodTypeAny ? z.infer<TParamsSchema> : unknown;
 
 export type RouteMethod =
   | "any"
@@ -35,8 +39,15 @@ export type RouteHandler<
   TSchema extends RouteSchema = {},
   TParamsSchema extends RouteParamsSchema | undefined = undefined,
   TContextExtensions extends object = {},
+  TParamsValue = InferParamsValue<TParamsSchema>,
+  TProcedures extends object = {},
 > = (
-  context: TypedRouteContext<TSchema, TParamsSchema, TContextExtensions>,
+  context: TypedRouteContextWithParamsValue<
+    TSchema,
+    TParamsValue,
+    TProcedures,
+    TContextExtensions
+  >,
 ) => RouteHandlerReturn<TSchema> | Promise<RouteHandlerReturn<TSchema>>;
 
 export type RouteBeforeValidationHook<
@@ -85,6 +96,14 @@ export type RouteDefinition<
    * Returning a `Response` short-circuits the route pipeline.
    */
   beforeValidationHooks?: RouteBeforeValidationHook<TRouteConfigExtensions>[];
+  /**
+   * Procedures applied to this route via `route().procedure(...)`.
+   *
+   * Runs in declaration order after request validation and before the route
+   * handler. Return values are merged into `c.procedures`. Entries whose
+   * `applyOnMethods` excludes the route's method are skipped.
+   */
+  procedures?: AnyAppliedRouteProcedure[];
 };
 
 export type RouteRegistration<

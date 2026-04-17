@@ -40,6 +40,20 @@ export type {
   RouteBuilderMethodStage,
   RouteBuilderMethodSelectionStage,
 } from "./builders/route.js";
+export type { ProcedureBuilderStage } from "./builders/procedure.js";
+export type {
+  ProcedureParamsSchema,
+  ProcedureContributions,
+  RouteProcedureHandler,
+  RouteProcedureHandlerContext,
+  RouteProcedureDefinition,
+  RouteProcedureFactory,
+  AppliedRouteProcedure,
+  RouteProcedureApplyOptions,
+  InferProcedureParamsValue,
+  InferAppliedProcedureContributions,
+  InferMergedParamsValue,
+} from "./types/procedure.js";
 export type {
   ClientManifest,
   ClientManifestFramework,

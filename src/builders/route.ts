@@ -17,6 +17,14 @@ import type {
   RouteThrowsSchemaMap,
   RouteThrowsSchemaInput,
 } from "../types/schema.js";
+import type {
+  AnyAppliedRouteProcedure,
+  AnyRouteProcedureDefinition,
+  AppliedRouteProcedure,
+  InferAppliedProcedureContributions,
+  InferMergedParamsValue,
+  RouteProcedureApplyOptions,
+} from "../types/procedure.js";
 import type { FileConfig, FilesConfig } from "../types/file.js";
 import type { z } from "zod";
 import { mergeRouteConfig } from "../config/routes.js";
@@ -112,6 +120,7 @@ export interface RouteBuilderMethodStage<
   TContextRefinementRules extends ContextRefinementRule = never,
   TRouteConfig extends object = {},
   TEffectiveConfig extends object = TRouteConfig,
+  TProcedures extends readonly AnyAppliedRouteProcedure[] = [],
 > {
   /**
    * Sets request body validation schema.
@@ -129,7 +138,8 @@ export interface RouteBuilderMethodStage<
           TFeatures,
           TContextRefinementRules,
           TRouteConfig,
-          TEffectiveConfig
+          TEffectiveConfig,
+          TProcedures
         >,
     schema: TBodySchema,
   ): RouteBuilderMethodStage<
@@ -140,7 +150,8 @@ export interface RouteBuilderMethodStage<
     TFeatures,
     TContextRefinementRules,
     TRouteConfig,
-    TEffectiveConfig
+    TEffectiveConfig,
+    TProcedures
   >;
   /**
    * Applies per-method runtime config.
@@ -157,7 +168,8 @@ export interface RouteBuilderMethodStage<
     TFeatures,
     TContextRefinementRules,
     TRouteConfig,
-    DeepMergeObjects<TEffectiveConfig, TNextConfig>
+    DeepMergeObjects<TEffectiveConfig, TNextConfig>,
+    TProcedures
   >;
   /**
    * Attaches human-readable metadata to the route.
@@ -172,7 +184,8 @@ export interface RouteBuilderMethodStage<
     TFeatures,
     TContextRefinementRules,
     TRouteConfig,
-    TEffectiveConfig
+    TEffectiveConfig,
+    TProcedures
   >;
   /**
    * Replaces the current route schema in one call.
@@ -195,7 +208,8 @@ export interface RouteBuilderMethodStage<
     TFeatures,
     TContextRefinementRules,
     TRouteConfig,
-    TEffectiveConfig
+    TEffectiveConfig,
+    TProcedures
   >;
   /**
    * Sets query-string validation schema.
@@ -210,7 +224,8 @@ export interface RouteBuilderMethodStage<
     TFeatures,
     TContextRefinementRules,
     TRouteConfig,
-    TEffectiveConfig
+    TEffectiveConfig,
+    TProcedures
   >;
   /**
    * Sets request headers validation schema.
@@ -225,7 +240,8 @@ export interface RouteBuilderMethodStage<
     TFeatures,
     TContextRefinementRules,
     TRouteConfig,
-    TEffectiveConfig
+    TEffectiveConfig,
+    TProcedures
   >;
   /**
    * Declares successful response schema(s).
@@ -243,7 +259,8 @@ export interface RouteBuilderMethodStage<
     TFeatures,
     TContextRefinementRules,
     TRouteConfig,
-    TEffectiveConfig
+    TEffectiveConfig,
+    TProcedures
   >;
   /**
    * Declares typed thrown error shapes for 4xx statuses.
@@ -264,7 +281,8 @@ export interface RouteBuilderMethodStage<
     TFeatures,
     TContextRefinementRules,
     TRouteConfig,
-    TEffectiveConfig
+    TEffectiveConfig,
+    TProcedures
   >;
   /**
    * Declares a single-file upload for this route.
@@ -286,7 +304,8 @@ export interface RouteBuilderMethodStage<
           TFeatures,
           TContextRefinementRules,
           TRouteConfig,
-          TEffectiveConfig
+          TEffectiveConfig,
+          TProcedures
         >,
     config?: TFileConfig,
   ): RouteBuilderMethodStage<
@@ -297,7 +316,8 @@ export interface RouteBuilderMethodStage<
     TFeatures,
     TContextRefinementRules,
     TRouteConfig,
-    TEffectiveConfig
+    TEffectiveConfig,
+    TProcedures
   >;
   /**
    * Declares a multi-file upload for this route.
@@ -319,7 +339,8 @@ export interface RouteBuilderMethodStage<
           TFeatures,
           TContextRefinementRules,
           TRouteConfig,
-          TEffectiveConfig
+          TEffectiveConfig,
+          TProcedures
         >,
     config?: TFilesConfig,
   ): RouteBuilderMethodStage<
@@ -330,10 +351,15 @@ export interface RouteBuilderMethodStage<
     TFeatures,
     TContextRefinementRules,
     TRouteConfig,
-    TEffectiveConfig
+    TEffectiveConfig,
+    TProcedures
   >;
   /**
    * Finalizes route registration with a handler.
+   *
+   * The handler's context receives:
+   * - `c.params` merged from route + all attached procedures (route params win on collision)
+   * - `c.procedures` keyed by contributions from procedures that apply to this method
    */
   handle(
     handler: RouteHandler<
@@ -343,14 +369,17 @@ export interface RouteBuilderMethodStage<
         TContextExtensions,
         TContextRefinementRules,
         TEffectiveConfig
-      >
+      >,
+      InferMergedParamsValue<TProcedures, TParamsSchema>,
+      InferAppliedProcedureContributions<TProcedures, TMethod>
     >,
   ): RouteBuilderMethodSelectionStage<
     TParamsSchema,
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
-    TRouteConfig
+    TRouteConfig,
+    TProcedures
   >;
 }
 
@@ -360,6 +389,7 @@ export interface RouteBuilderMethodSelectionStage<
   TFeatures extends RouteConfigCapabilities = {},
   TContextRefinementRules extends ContextRefinementRule = never,
   TDefaultConfig extends object = {},
+  TProcedures extends readonly AnyAppliedRouteProcedure[] = [],
 > {
   /**
    * Sets route-level params schema for all methods from this builder.
@@ -371,7 +401,8 @@ export interface RouteBuilderMethodSelectionStage<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
-    TDefaultConfig
+    TDefaultConfig,
+    TProcedures
   >;
   /**
    * Applies runtime config defaults for all methods registered from this builder.
@@ -383,7 +414,33 @@ export interface RouteBuilderMethodSelectionStage<
     TContextExtensions,
     TFeatures,
     TContextRefinementRules,
-    DeepMergeObjects<TDefaultConfig, TNextConfig>
+    DeepMergeObjects<TDefaultConfig, TNextConfig>,
+    TProcedures
+  >;
+  /**
+   * Attaches a procedure to every method declared from this builder.
+   *
+   * - Procedures run in the order attached.
+   * - `options.applyOnMethods` optionally narrows which methods execute it;
+   *   types on `c.procedures` automatically reflect that filter.
+   * - The procedure's params merge with the route's params (route wins on collision).
+   *
+   * Example:
+   * `.procedure(userProcedure({ skipOwnershipCheck: true }), { applyOnMethods: ["get"] })`
+   */
+  procedure<
+    TProcedure extends AnyRouteProcedureDefinition,
+    TMethods extends readonly RouteMethod[] | undefined = undefined,
+  >(
+    procedure: TProcedure,
+    options?: RouteProcedureApplyOptions<TMethods>,
+  ): RouteBuilderMethodSelectionStage<
+    TParamsSchema,
+    TContextExtensions,
+    TFeatures,
+    TContextRefinementRules,
+    TDefaultConfig,
+    readonly [...TProcedures, AppliedRouteProcedure<TProcedure, TMethods>]
   >;
   /**
    * Registers an `any` method route.
@@ -396,7 +453,8 @@ export interface RouteBuilderMethodSelectionStage<
     TFeatures,
     TContextRefinementRules,
     TDefaultConfig,
-    TDefaultConfig
+    TDefaultConfig,
+    TProcedures
   >;
   /**
    * Registers a `GET` route.
@@ -409,7 +467,8 @@ export interface RouteBuilderMethodSelectionStage<
     TFeatures,
     TContextRefinementRules,
     TDefaultConfig,
-    TDefaultConfig
+    TDefaultConfig,
+    TProcedures
   >;
   /**
    * Registers a `POST` route.
@@ -422,7 +481,8 @@ export interface RouteBuilderMethodSelectionStage<
     TFeatures,
     TContextRefinementRules,
     TDefaultConfig,
-    TDefaultConfig
+    TDefaultConfig,
+    TProcedures
   >;
   /**
    * Registers a `PUT` route.
@@ -435,7 +495,8 @@ export interface RouteBuilderMethodSelectionStage<
     TFeatures,
     TContextRefinementRules,
     TDefaultConfig,
-    TDefaultConfig
+    TDefaultConfig,
+    TProcedures
   >;
   /**
    * Registers a `PATCH` route.
@@ -448,7 +509,8 @@ export interface RouteBuilderMethodSelectionStage<
     TFeatures,
     TContextRefinementRules,
     TDefaultConfig,
-    TDefaultConfig
+    TDefaultConfig,
+    TProcedures
   >;
   /**
    * Registers a `DELETE` route.
@@ -461,7 +523,8 @@ export interface RouteBuilderMethodSelectionStage<
     TFeatures,
     TContextRefinementRules,
     TDefaultConfig,
-    TDefaultConfig
+    TDefaultConfig,
+    TProcedures
   >;
   /**
    * Registers an `OPTIONS` route.
@@ -474,7 +537,8 @@ export interface RouteBuilderMethodSelectionStage<
     TFeatures,
     TContextRefinementRules,
     TDefaultConfig,
-    TDefaultConfig
+    TDefaultConfig,
+    TProcedures
   >;
 }
 
@@ -491,10 +555,50 @@ export class RouteBuilder<
   private pendingConfig: RouteConfig<TFeatures> | null = null;
   private defaultConfig: RouteConfig<TFeatures> = {};
   private defaultParamsSchema: RouteParamsSchema | undefined = undefined;
+  private readonly appliedProcedures: AnyAppliedRouteProcedure[] = [];
 
   public constructor(
     private readonly register: RouteRegistration<TContextExtensions, TFeatures>,
   ) {}
+
+  public procedure<
+    TProcedure extends AnyRouteProcedureDefinition,
+    TMethods extends readonly RouteMethod[] | undefined = undefined,
+  >(
+    procedure: TProcedure,
+    options?: RouteProcedureApplyOptions<TMethods>,
+  ): RouteBuilderMethodSelectionStage<
+    TParamsSchema,
+    TContextExtensions,
+    TFeatures,
+    TContextRefinementRules,
+    TDefaultConfig,
+    // Class cannot carry accumulated TProcedures in its own generics; the
+    // interface overload drives the caller-visible tuple via `as unknown as`.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    any
+  > {
+    if (this.pendingMethod) {
+      throw new Error(
+        "Invalid route chain: call .procedure(...) before selecting an HTTP method.",
+      );
+    }
+
+    this.appliedProcedures.push({
+      procedure,
+      applyOnMethods: options?.applyOnMethods,
+    });
+
+    return this as unknown as RouteBuilderMethodSelectionStage<
+      TParamsSchema,
+      TContextExtensions,
+      TFeatures,
+      TContextRefinementRules,
+      TDefaultConfig,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      any
+    >;
+  }
 
   public config<TNextConfig extends RouteConfig<TFeatures>>(
     config: TNextConfig,
@@ -1148,6 +1252,10 @@ export class RouteBuilder<
           ? this.pendingSchema
           : undefined,
       config: mergeRouteConfig<TFeatures>(this.defaultConfig, this.pendingConfig ?? {}),
+      procedures:
+        this.appliedProcedures.length > 0
+          ? [...this.appliedProcedures]
+          : undefined,
     });
 
     this.pendingMethod = null;

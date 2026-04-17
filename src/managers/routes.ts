@@ -2,11 +2,16 @@ import { readdir } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Context, Hono } from "hono";
+import { z } from "zod";
 import { mergeRouteConfig } from "../config/routes.js";
 import { filePathToUrlPath } from "../parser.js";
 import type { RouteDefinition } from "../types/route.js";
 import type { RouteConfig } from "../types/config.js";
 import type { RouteParamsSchema, RouteSchema } from "../types/schema.js";
+import type {
+  AnyAppliedRouteProcedure,
+  AnyRouteProcedureDefinition,
+} from "../types/procedure.js";
 import {
   buildApiErrorResponse,
   createApiError,
@@ -43,6 +48,92 @@ const SUPPORTED_EXTENSIONS: ReadonlySet<SupportedExtension> = new Set([
   ".mts",
   ".cts",
 ]);
+
+type ZodObjectLike = z.ZodObject<Record<string, z.ZodTypeAny>>;
+
+function isZodObjectSchema(schema: unknown): schema is ZodObjectLike {
+  return (
+    typeof schema === "object" &&
+    schema !== null &&
+    "shape" in schema &&
+    typeof (schema as { shape: unknown }).shape === "object"
+  );
+}
+
+/**
+ * Produces a single params schema by layering each source's `shape` on top of
+ * the previous one. Later entries override keys from earlier ones.
+ *
+ * All inputs must be `z.object(...)` schemas — throws otherwise.
+ */
+function mergeOrderedParamsSchemas(
+  schemas: ReadonlyArray<RouteParamsSchema | undefined>,
+): RouteParamsSchema | undefined {
+  const defined = schemas.filter(
+    (schema): schema is RouteParamsSchema => schema !== undefined,
+  );
+
+  if (defined.length === 0) {
+    return undefined;
+  }
+
+  if (defined.length === 1) {
+    return defined[0];
+  }
+
+  const combinedShape: Record<string, z.ZodTypeAny> = {};
+  for (const schema of defined) {
+    if (!isZodObjectSchema(schema)) {
+      throw new Error(
+        "Route and procedure params schemas must be z.object(...) when mixed on a single route.",
+      );
+    }
+    Object.assign(combinedShape, schema.shape);
+  }
+
+  return z.object(combinedShape);
+}
+
+function procedureAppliesToMethod(
+  applied: AnyAppliedRouteProcedure,
+  method: string,
+): boolean {
+  const methods = applied.applyOnMethods;
+  if (!methods) {
+    return true;
+  }
+  return methods.includes(method as never);
+}
+
+/**
+ * Executes a single procedure's handler, injecting the use-site config, and
+ * merges any returned contributions into the accumulated `c.procedures` bag.
+ *
+ * The procedure sees the same `context.params` object used by the route
+ * handler (already validated against the merged params schema) plus its own
+ * `context.config` set for this invocation.
+ */
+async function runProcedure(
+  context: Context,
+  procedure: AnyRouteProcedureDefinition,
+  contributions: Record<string, unknown>,
+): Promise<void> {
+  const previousConfig = (context as unknown as { config?: unknown }).config;
+  (context as unknown as { config: unknown }).config = procedure.config;
+
+  try {
+    const result = await procedure.handler(context as never);
+    if (result && typeof result === "object") {
+      Object.assign(contributions, result);
+    }
+  } finally {
+    if (previousConfig === undefined) {
+      delete (context as unknown as { config?: unknown }).config;
+    } else {
+      (context as unknown as { config: unknown }).config = previousConfig;
+    }
+  }
+}
 
 export class RouteManager {
   public readonly cache = new Map<string, string>();
@@ -167,6 +258,16 @@ export class RouteManager {
       TRouteConfigExtensions
     >,
   ) {
+    const appliedProcedures = definition.procedures ?? [];
+    const activeProcedures = appliedProcedures.filter((applied) =>
+      procedureAppliesToMethod(applied, definition.method),
+    );
+    const mergedParamsSchema = mergeOrderedParamsSchemas([
+      // Procedure params come first; route params LAST so route keys win.
+      ...appliedProcedures.map((applied) => applied.procedure.paramsSchema),
+      definition.params,
+    ]);
+
     return async (context: Context): Promise<Response> => {
       const effectiveRouteConfig = mergeRouteConfig(
         this.defaultRouteConfig as RouteConfig<TRouteConfigExtensions>,
@@ -187,7 +288,7 @@ export class RouteManager {
       const requestValidation = await validateRouteRequest(
         context,
         definition.schema,
-        definition.params,
+        mergedParamsSchema,
       );
 
       if (!requestValidation.ok) {
@@ -266,6 +367,53 @@ export class RouteManager {
           message,
         } as never);
       }) as unknown;
+
+      const procedureContributions: Record<string, unknown> = {};
+      (context as unknown as { procedures: Record<string, unknown> }).procedures =
+        procedureContributions;
+
+      try {
+        for (const applied of activeProcedures) {
+          await runProcedure(context, applied.procedure, procedureContributions);
+        }
+      } catch (error) {
+        const normalizedError = normalizeHandlerThrownError(error);
+        const isInternalRuntimeError = normalizedError.status >= 500;
+
+        if (isInternalRuntimeError) {
+          const method = definition.method.toUpperCase();
+          const requestPath = context.req.path;
+          const originalError =
+            error instanceof Error
+              ? {
+                  name: error.name,
+                  message: error.message,
+                  stack: error.stack,
+                }
+              : error;
+
+          console.error(
+            `[ProcedureError] ${method} ${requestPath} -> ${normalizedError.status} ${normalizedError.code ?? "INTERNAL_ERROR"}`,
+            originalError,
+          );
+          return buildApiErrorResponse({
+            status: 500,
+            code: "INTERNAL_ERROR",
+            message: "An error occurred in a route procedure.",
+          });
+        }
+
+        const throwValidation = validateRouteThrownError(
+          definition.schema,
+          normalizedError,
+        );
+
+        if (!throwValidation.ok) {
+          return throwValidation.response;
+        }
+
+        return buildApiErrorResponse(normalizedError);
+      }
 
       let handlerResult: unknown;
       try {
