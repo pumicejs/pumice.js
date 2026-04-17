@@ -2,6 +2,10 @@ import type { Context } from "hono";
 import type { z } from "zod";
 import type { RouteMethod } from "./route.js";
 import type { Simplify } from "./schema.js";
+import type {
+  ApplyContextRefinementRules,
+  ContextRefinementRule,
+} from "./plugin.js";
 
 /**
  * Schema type accepted by `.params(...)` on a procedure builder.
@@ -38,17 +42,23 @@ export type InferProcedureParamsValue<
  * Context passed to a procedure handler.
  *
  * Includes server-wide extensions (`TBaseContext`, e.g. `c.auth`), the
- * procedure's own validated params, and the config provided at use-site.
+ * procedure's own validated params, the config provided at use-site, and
+ * any context refinements contributed by plugins that match the server's
+ * default route config (e.g. auth-plugin refining `c.auth.data` to
+ * non-undefined when `authentication.required === true` is the default).
  */
 export type RouteProcedureHandlerContext<
   TConfig extends object,
   TParamsSchema extends ProcedureParamsSchema | undefined,
   TBaseContext extends object,
+  TContextRefinementRules extends ContextRefinementRule = never,
+  TDefaultRouteConfig extends object = {},
 > = Simplify<
   Omit<Context, "json" | "body" | "error"> & {
     params: InferProcedureParamsValue<TParamsSchema>;
     config: TConfig;
-  } & TBaseContext
+  } & TBaseContext &
+    ApplyContextRefinementRules<TContextRefinementRules, TDefaultRouteConfig>
 >;
 
 export type RouteProcedureHandler<
@@ -56,8 +66,16 @@ export type RouteProcedureHandler<
   TParamsSchema extends ProcedureParamsSchema | undefined = undefined,
   TContributions extends ProcedureContributions = void,
   TBaseContext extends object = {},
+  TContextRefinementRules extends ContextRefinementRule = never,
+  TDefaultRouteConfig extends object = {},
 > = (
-  context: RouteProcedureHandlerContext<TConfig, TParamsSchema, TBaseContext>,
+  context: RouteProcedureHandlerContext<
+    TConfig,
+    TParamsSchema,
+    TBaseContext,
+    TContextRefinementRules,
+    TDefaultRouteConfig
+  >,
 ) => TContributions | Promise<TContributions>;
 
 /**
@@ -73,6 +91,8 @@ export type RouteProcedureDefinition<
   TParamsSchema extends ProcedureParamsSchema | undefined = undefined,
   TContributions extends object = {},
   TBaseContext extends object = {},
+  TContextRefinementRules extends ContextRefinementRule = never,
+  TDefaultRouteConfig extends object = {},
 > = {
   config: TConfig;
   paramsSchema?: TParamsSchema;
@@ -80,7 +100,9 @@ export type RouteProcedureDefinition<
     TConfig,
     TParamsSchema,
     TContributions | void,
-    TBaseContext
+    TBaseContext,
+    TContextRefinementRules,
+    TDefaultRouteConfig
   >;
   /** Phantom carrier for contribution type — never populated at runtime. */
   readonly _contributions?: TContributions;
@@ -95,19 +117,25 @@ export type RouteProcedureFactory<
   TParamsSchema extends ProcedureParamsSchema | undefined = undefined,
   TContributions extends object = {},
   TBaseContext extends object = {},
+  TContextRefinementRules extends ContextRefinementRule = never,
+  TDefaultRouteConfig extends object = {},
 > = (
   ...args: ProcedureFactoryArgs<TConfig>
 ) => RouteProcedureDefinition<
   TConfig,
   TParamsSchema,
   TContributions,
-  TBaseContext
+  TBaseContext,
+  TContextRefinementRules,
+  TDefaultRouteConfig
 >;
 
 /**
  * Widest-type alias used when accumulating procedures on the route builder.
  */
 export type AnyRouteProcedureDefinition = RouteProcedureDefinition<
+  any,
+  any,
   any,
   any,
   any,

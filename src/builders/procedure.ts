@@ -4,6 +4,7 @@ import type {
   RouteProcedureFactory,
   RouteProcedureHandler,
 } from "../types/procedure.js";
+import type { ContextRefinementRule } from "../types/plugin.js";
 
 /**
  * Fluent builder for a reusable route procedure.
@@ -17,6 +18,8 @@ export interface ProcedureBuilderStage<
   TConfig extends object = {},
   TParamsSchema extends ProcedureParamsSchema | undefined = undefined,
   TBaseContext extends object = {},
+  TContextRefinementRules extends ContextRefinementRule = never,
+  TDefaultRouteConfig extends object = {},
 > {
   /**
    * Declares the config type this procedure accepts when applied to a route.
@@ -28,7 +31,9 @@ export interface ProcedureBuilderStage<
   config<TNextConfig extends object>(): ProcedureBuilderStage<
     TNextConfig,
     TParamsSchema,
-    TBaseContext
+    TBaseContext,
+    TContextRefinementRules,
+    TDefaultRouteConfig
   >;
 
   /**
@@ -39,7 +44,13 @@ export interface ProcedureBuilderStage<
    */
   params<TNextParamsSchema extends ProcedureParamsSchema>(
     schema: TNextParamsSchema,
-  ): ProcedureBuilderStage<TConfig, TNextParamsSchema, TBaseContext>;
+  ): ProcedureBuilderStage<
+    TConfig,
+    TNextParamsSchema,
+    TBaseContext,
+    TContextRefinementRules,
+    TDefaultRouteConfig
+  >;
 
   /**
    * Finalizes the procedure with a request-time handler.
@@ -52,13 +63,17 @@ export interface ProcedureBuilderStage<
       TConfig,
       TParamsSchema,
       TContributions,
-      TBaseContext
+      TBaseContext,
+      TContextRefinementRules,
+      TDefaultRouteConfig
     >,
   ): RouteProcedureFactory<
     TConfig,
     TParamsSchema,
     Awaited<TContributions> extends object ? Awaited<TContributions> : {},
-    TBaseContext
+    TBaseContext,
+    TContextRefinementRules,
+    TDefaultRouteConfig
   >;
 }
 
@@ -66,30 +81,51 @@ export class ProcedureBuilder<
   TConfig extends object = {},
   TParamsSchema extends ProcedureParamsSchema | undefined = undefined,
   TBaseContext extends object = {},
-> implements ProcedureBuilderStage<TConfig, TParamsSchema, TBaseContext>
+  TContextRefinementRules extends ContextRefinementRule = never,
+  TDefaultRouteConfig extends object = {},
+> implements
+    ProcedureBuilderStage<
+      TConfig,
+      TParamsSchema,
+      TBaseContext,
+      TContextRefinementRules,
+      TDefaultRouteConfig
+    >
 {
   private paramsSchema: ProcedureParamsSchema | undefined = undefined;
 
   public config<TNextConfig extends object>(): ProcedureBuilderStage<
     TNextConfig,
     TParamsSchema,
-    TBaseContext
+    TBaseContext,
+    TContextRefinementRules,
+    TDefaultRouteConfig
   > {
     return this as unknown as ProcedureBuilderStage<
       TNextConfig,
       TParamsSchema,
-      TBaseContext
+      TBaseContext,
+      TContextRefinementRules,
+      TDefaultRouteConfig
     >;
   }
 
   public params<TNextParamsSchema extends ProcedureParamsSchema>(
     schema: TNextParamsSchema,
-  ): ProcedureBuilderStage<TConfig, TNextParamsSchema, TBaseContext> {
+  ): ProcedureBuilderStage<
+    TConfig,
+    TNextParamsSchema,
+    TBaseContext,
+    TContextRefinementRules,
+    TDefaultRouteConfig
+  > {
     this.paramsSchema = schema;
     return this as unknown as ProcedureBuilderStage<
       TConfig,
       TNextParamsSchema,
-      TBaseContext
+      TBaseContext,
+      TContextRefinementRules,
+      TDefaultRouteConfig
     >;
   }
 
@@ -98,13 +134,17 @@ export class ProcedureBuilder<
       TConfig,
       TParamsSchema,
       TContributions,
-      TBaseContext
+      TBaseContext,
+      TContextRefinementRules,
+      TDefaultRouteConfig
     >,
   ): RouteProcedureFactory<
     TConfig,
     TParamsSchema,
     Awaited<TContributions> extends object ? Awaited<TContributions> : {},
-    TBaseContext
+    TBaseContext,
+    TContextRefinementRules,
+    TDefaultRouteConfig
   > {
     const paramsSchema = this.paramsSchema as TParamsSchema | undefined;
 
@@ -113,7 +153,9 @@ export class ProcedureBuilder<
         TConfig,
         TParamsSchema,
         Awaited<TContributions> extends object ? Awaited<TContributions> : {},
-        TBaseContext
+        TBaseContext,
+        TContextRefinementRules,
+        TDefaultRouteConfig
       > = {
         config: (config ?? ({} as TConfig)) as TConfig,
         paramsSchema,
@@ -123,7 +165,9 @@ export class ProcedureBuilder<
           (Awaited<TContributions> extends object
             ? Awaited<TContributions>
             : {}) | void,
-          TBaseContext
+          TBaseContext,
+          TContextRefinementRules,
+          TDefaultRouteConfig
         >,
       };
       return definition;
@@ -131,7 +175,9 @@ export class ProcedureBuilder<
       TConfig,
       TParamsSchema,
       Awaited<TContributions> extends object ? Awaited<TContributions> : {},
-      TBaseContext
+      TBaseContext,
+      TContextRefinementRules,
+      TDefaultRouteConfig
     >;
 
     return factory;
@@ -140,10 +186,26 @@ export class ProcedureBuilder<
 
 export function createProcedureBuilder<
   TBaseContext extends object,
->(): ProcedureBuilderStage<{}, undefined, TBaseContext> {
+  TContextRefinementRules extends ContextRefinementRule = never,
+  TDefaultRouteConfig extends object = {},
+>(): ProcedureBuilderStage<
+  {},
+  undefined,
+  TBaseContext,
+  TContextRefinementRules,
+  TDefaultRouteConfig
+> {
   return new ProcedureBuilder<
     {},
     undefined,
-    TBaseContext
-  >() as unknown as ProcedureBuilderStage<{}, undefined, TBaseContext>;
+    TBaseContext,
+    TContextRefinementRules,
+    TDefaultRouteConfig
+  >() as unknown as ProcedureBuilderStage<
+    {},
+    undefined,
+    TBaseContext,
+    TContextRefinementRules,
+    TDefaultRouteConfig
+  >;
 }

@@ -138,8 +138,18 @@ export class Server<
    *   });
    * ```
    */
-  public procedure(): ProcedureBuilderStage<{}, undefined, TContextExtensions> {
-    return createProcedureBuilder<TContextExtensions>();
+  public procedure(): ProcedureBuilderStage<
+    {},
+    undefined,
+    TContextExtensions,
+    TContextRefinementRules,
+    TDefaultRouteConfig
+  > {
+    return createProcedureBuilder<
+      TContextExtensions,
+      TContextRefinementRules,
+      TDefaultRouteConfig
+    >();
   }
 
   /**
