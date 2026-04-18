@@ -560,7 +560,7 @@ export class RouteManager {
           });
         }
 
-        const throwValidation = validateRouteThrownError(
+        const throwValidation = await validateRouteThrownError(
           definition.schema,
           normalizedError,
         );
@@ -602,7 +602,7 @@ export class RouteManager {
           });
         }
 
-        const throwValidation = validateRouteThrownError(
+        const throwValidation = await validateRouteThrownError(
           definition.schema,
           normalizedError,
         );
@@ -703,7 +703,7 @@ export class RouteManager {
             });
           }
 
-          const throwValidation = validateRouteThrownError(
+          const throwValidation = await validateRouteThrownError(
             definition.schema,
             normalizedError,
           );

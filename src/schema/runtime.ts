@@ -634,12 +634,12 @@ function createApiErrorResponse(error: NormalizedRouteError): Response {
   );
 }
 
-function validateThrownEntryPayload(
+async function validateThrownEntryPayload(
   throwSchema: RouteThrowSchema,
   error: NormalizedRouteError,
-): ThrowValidationResult {
+): Promise<ThrowValidationResult> {
   if (isZodSchema(throwSchema)) {
-    const dataResult = throwSchema.safeParse(error.data);
+    const dataResult = await throwSchema.safeParseAsync(error.data);
     if (!dataResult.success) {
       return {
         ok: false,
@@ -656,7 +656,7 @@ function validateThrownEntryPayload(
 
   const dataSchema = throwSchema.data;
   if (dataSchema) {
-    const dataResult = dataSchema.safeParse(error.data);
+    const dataResult = await dataSchema.safeParseAsync(error.data);
     if (!dataResult.success) {
       return {
         ok: false,
@@ -680,7 +680,7 @@ function validateThrownEntryPayload(
 
   const issuesSchema = throwSchema.issues;
   if (issuesSchema) {
-    const issuesResult = issuesSchema.safeParse(error.issues);
+    const issuesResult = await issuesSchema.safeParseAsync(error.issues);
     if (!issuesResult.success) {
       return {
         ok: false,
@@ -741,7 +741,7 @@ export async function validateRouteRequest(
           extraction.body,
           schema.body,
         );
-        const bodyResult = schema.body.safeParse(bodyForParse);
+        const bodyResult = await schema.body.safeParseAsync(bodyForParse);
         if (!bodyResult.success) {
           validationErrors.body = bodyResult.error.issues;
         } else {
@@ -780,7 +780,7 @@ export async function validateRouteRequest(
     }
 
     if (!validationErrors.body) {
-      const bodyResult = schema.body.safeParse(parsedRequestBody);
+      const bodyResult = await schema.body.safeParseAsync(parsedRequestBody);
 
       if (!bodyResult.success) {
         const firstIssue = bodyResult.error.issues.at(0);
@@ -813,7 +813,7 @@ export async function validateRouteRequest(
   }
 
   if (schema?.query) {
-    const queryResult = schema.query.safeParse(parsedQuery);
+    const queryResult = await schema.query.safeParseAsync(parsedQuery);
 
     if (!queryResult.success) {
       validationErrors.query = queryResult.error.issues;
@@ -823,7 +823,7 @@ export async function validateRouteRequest(
   }
 
   if (schema?.headers) {
-    const headersResult = schema.headers.safeParse(parsedHeaders);
+    const headersResult = await schema.headers.safeParseAsync(parsedHeaders);
 
     if (!headersResult.success) {
       validationErrors.headers = headersResult.error.issues;
@@ -833,7 +833,7 @@ export async function validateRouteRequest(
   }
 
   if (paramsSchema) {
-    const paramsResult = paramsSchema.safeParse(parsedParams);
+    const paramsResult = await paramsSchema.safeParseAsync(parsedParams);
 
     if (!paramsResult.success) {
       validationErrors.params = paramsResult.error.issues;
@@ -866,10 +866,10 @@ export async function validateRouteRequest(
   };
 }
 
-export function validateRouteThrownError(
+export async function validateRouteThrownError(
   schema: RouteSchema | undefined,
   error: NormalizedRouteError,
-): ThrowValidationResult {
+): Promise<ThrowValidationResult> {
   if (!isClientErrorStatus(error.status)) {
     return {
       ok: false,
