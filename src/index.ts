@@ -41,6 +41,13 @@ export type {
   RouteBuilderMethodSelectionStage,
 } from "./builders/route.js";
 export type { ProcedureBuilderStage } from "./builders/procedure.js";
+export type { MiddlewareBuilderStage } from "./builders/middleware.js";
+export type {
+  MiddlewareHandler,
+  MiddlewareHandlerContext,
+  MiddlewareNext,
+  MiddlewareDefinition,
+} from "./types/middleware.js";
 export type {
   ProcedureParamsSchema,
   ProcedureContributions,

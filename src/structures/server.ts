@@ -10,6 +10,11 @@ import {
   createProcedureBuilder,
   type ProcedureBuilderStage,
 } from "../builders/procedure.js";
+import {
+  createMiddlewareBuilder,
+  type MiddlewareBuilderStage,
+} from "../builders/middleware.js";
+import type { MiddlewareDefinition } from "../types/middleware.js";
 import { mergeRouteConfig } from "../config/routes.js";
 import type { RouteConfig } from "../types/config.js";
 import { getStatusMessage } from "../errors/api.js";
@@ -150,6 +155,45 @@ export class Server<
       TContextRefinementRules,
       TDefaultRouteConfig
     >();
+  }
+
+  /**
+   * Declares a middleware scoped to the directory of its source file. Only
+   * callable from inside a `middleware.ts` or `*.mw.ts` file during route
+   * discovery.
+   *
+   * Middleware applies to every route beneath its directory. Routing groups
+   * like `(auth-stuff)` count as directories for scope even though they are
+   * stripped from the URL path — put a middleware inside a group to limit it
+   * to routes in that group.
+   *
+   * Example:
+   * ```ts
+   * // src/routes/(auth)/middleware.ts
+   * server.middleware()
+   *   .describe("Staff-only guard")
+   *   .handle(async (c, next) => {
+   *     if (!c.auth.data.user.isStaff) {
+   *       return c.json({ error: "forbidden" }, 403);
+   *     }
+   *     return next();
+   *   });
+   * ```
+   */
+  public middleware(): MiddlewareBuilderStage<
+    TContextExtensions,
+    TContextRefinementRules,
+    TDefaultRouteConfig
+  > {
+    return createMiddlewareBuilder<
+      TContextExtensions,
+      TContextRefinementRules,
+      TDefaultRouteConfig
+    >((definition) =>
+      this.routes.addMiddlewareFromCurrentFile(
+        definition as unknown as MiddlewareDefinition,
+      ),
+    );
   }
 
   /**

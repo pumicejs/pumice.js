@@ -11,6 +11,14 @@ function toRouteSegment(segment: string): string {
   return `:${dynamicMatch[1]}`;
 }
 
+/**
+ * A "routing group" directory like `(auth-stuff)` — organizational only, does
+ * NOT contribute a segment to the URL path.
+ */
+function isGroupSegment(segment: string): boolean {
+  return segment.length >= 2 && segment.startsWith("(") && segment.endsWith(")");
+}
+
 function normalizeBasePath(basePath: string): string[] {
   return basePath
     .replaceAll("\\", "/")
@@ -67,7 +75,10 @@ export function filePathToUrlPath(
     withoutIndexLike.pop();
   }
 
-  const routeSegments = withoutIndexLike.map(toRouteSegment).filter(Boolean);
+  const routeSegments = withoutIndexLike
+    .filter((segment) => !isGroupSegment(segment))
+    .map(toRouteSegment)
+    .filter(Boolean);
 
   if (routeSegments.length === 0) {
     return "/";

@@ -1,5 +1,5 @@
 import { readdir } from "node:fs/promises";
-import { extname, join, relative } from "node:path";
+import { dirname, extname, join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Context, Hono } from "hono";
 import { z } from "zod";
@@ -12,6 +12,10 @@ import type {
   AnyAppliedRouteProcedure,
   AnyRouteProcedureDefinition,
 } from "../types/procedure.js";
+import type {
+  AnyMiddlewareDefinition,
+  MiddlewareDefinition,
+} from "../types/middleware.js";
 import {
   buildApiErrorResponse,
   createApiError,
@@ -110,6 +114,66 @@ function isDynamicSegment(segment: string): boolean {
 }
 
 /**
+ * True for file basenames that declare a middleware scope:
+ * `middleware.{ts,js,...}` or any `*.mw.{ts,js,...}`.
+ */
+function isMiddlewareFile(filePath: string): boolean {
+  const fileName =
+    filePath.replaceAll("\\", "/").split("/").at(-1) ?? filePath;
+  const extension = extname(fileName);
+
+  if (!SUPPORTED_EXTENSIONS.has(extension as SupportedExtension)) {
+    return false;
+  }
+
+  const baseName = fileName.slice(0, -extension.length);
+  return baseName === "middleware" || baseName.endsWith(".mw");
+}
+
+/**
+ * Normalizes a directory path for keying in the middleware map. Converts
+ * backslashes to forward slashes and strips a trailing slash.
+ */
+function normalizeDirPath(dirPath: string): string {
+  const normalized = dirPath.replaceAll("\\", "/");
+  return normalized.endsWith("/") ? normalized.slice(0, -1) : normalized;
+}
+
+/**
+ * Walks upward from `routeFilePath`'s directory to `rootDirPath`, collecting
+ * middlewares registered in any ancestor directory. Returns outermost-first
+ * (rootDir) → innermost-last so the execution order naturally matches the
+ * file tree.
+ */
+function collectAncestorMiddlewares(
+  routeFilePath: string,
+  rootDirPath: string,
+  middlewaresByDir: ReadonlyMap<string, AnyMiddlewareDefinition[]>,
+): AnyMiddlewareDefinition[] {
+  const normalizedRoot = normalizeDirPath(rootDirPath);
+  const collected: AnyMiddlewareDefinition[][] = [];
+
+  let currentDir = normalizeDirPath(dirname(routeFilePath));
+  while (true) {
+    const directoryMiddlewares = middlewaresByDir.get(currentDir);
+    if (directoryMiddlewares && directoryMiddlewares.length > 0) {
+      collected.push(directoryMiddlewares);
+    }
+    if (currentDir === normalizedRoot) {
+      break;
+    }
+    const parentDir = normalizeDirPath(dirname(currentDir));
+    if (parentDir === currentDir) {
+      break;
+    }
+    currentDir = parentDir;
+  }
+
+  // `collected` is innermost-first; reverse for outer-first execution.
+  return collected.reverse().flat();
+}
+
+/**
  * Registers routes so static segments beat dynamic ones at the same depth.
  *
  * Without this, discovery of `/users/[id]/route.ts` and `/users/me/route.ts`
@@ -180,7 +244,13 @@ export class RouteManager {
     new Map();
   private readonly basePathSegments: string[];
   private currentRouteFilePath: string | null = null;
+  private currentMiddlewareFilePath: string | null = null;
   private defaultRouteConfig: RouteConfig<object> = {};
+  /** Middlewares registered during file-system discovery, keyed by directory. */
+  private readonly middlewaresByDir = new Map<
+    string,
+    AnyMiddlewareDefinition[]
+  >();
 
   public constructor(
     private readonly app: Hono,
@@ -201,12 +271,27 @@ export class RouteManager {
 
   public async registerDiscovered(): Promise<string[]> {
     const files = await this.walkFiles(this.rootDirPath);
-    const routeFiles = files
-      .filter((filePath) => this.isRouteFile(filePath))
+    const discoverableFiles = files.filter((filePath) =>
+      this.isRouteFile(filePath),
+    );
+    const middlewareFiles = discoverableFiles
+      .filter(isMiddlewareFile)
+      .sort(compareRouteFilePaths);
+    const routeFiles = discoverableFiles
+      .filter((filePath) => !isMiddlewareFile(filePath))
       .sort(compareRouteFilePaths);
 
     this.cache.clear();
     this.clientManifestRoutesByPath.clear();
+    this.middlewaresByDir.clear();
+
+    // Middlewares are loaded first so ancestor lookups succeed when route
+    // files import and register themselves synchronously below.
+    for (const middlewareFilePath of middlewareFiles) {
+      this.currentMiddlewareFilePath = middlewareFilePath;
+      await import(pathToFileURL(middlewareFilePath).href);
+    }
+    this.currentMiddlewareFilePath = null;
 
     for (const routeFilePath of routeFiles) {
       this.currentRouteFilePath = routeFilePath;
@@ -216,6 +301,41 @@ export class RouteManager {
     this.currentRouteFilePath = null;
 
     return [...this.cache.values()];
+  }
+
+  /**
+   * Called by the middleware builder during middleware-file discovery.
+   * Binds the definition to the directory of the current middleware file.
+   */
+  public addMiddlewareFromCurrentFile(
+    definition: MiddlewareDefinition,
+  ): void {
+    if (!this.currentMiddlewareFilePath) {
+      throw new Error(
+        "server.middleware() can only be called while middleware files are being loaded.",
+      );
+    }
+
+    const directoryKey = normalizeDirPath(
+      dirname(this.currentMiddlewareFilePath),
+    );
+    const existing = this.middlewaresByDir.get(directoryKey);
+    const enriched: AnyMiddlewareDefinition = {
+      ...definition,
+      sourceFilePath: this.currentMiddlewareFilePath,
+    };
+
+    if (existing) {
+      existing.push(enriched);
+    } else {
+      this.middlewaresByDir.set(directoryKey, [enriched]);
+    }
+
+    console.log(
+      `Registered middleware from ${relative(this.rootDirPath, this.currentMiddlewareFilePath)}${
+        definition.description ? ` (${definition.description})` : ""
+      }`,
+    );
   }
 
   public add<
@@ -238,7 +358,15 @@ export class RouteManager {
         basePath: this.basePath,
       });
 
-    const wrappedHandler = this.createValidatedHandler(definition);
+    const ancestorMiddlewares = collectAncestorMiddlewares(
+      filePath,
+      this.rootDirPath,
+      this.middlewaresByDir,
+    );
+    const wrappedHandler = this.createValidatedHandler(
+      definition,
+      ancestorMiddlewares,
+    );
 
     if (definition.method === "any") {
       this.app.all(routePath, wrappedHandler);
@@ -295,6 +423,7 @@ export class RouteManager {
       TContextExtensions,
       TRouteConfigExtensions
     >,
+    middlewares: readonly AnyMiddlewareDefinition[] = [],
   ) {
     const appliedProcedures = definition.procedures ?? [];
     const activeProcedures = appliedProcedures.filter((applied) =>
@@ -306,23 +435,13 @@ export class RouteManager {
       definition.params,
     ]);
 
-    return async (context: Context): Promise<Response> => {
-      const effectiveRouteConfig = mergeRouteConfig(
-        this.defaultRouteConfig as RouteConfig<TRouteConfigExtensions>,
-        definition.config as RouteConfig<TRouteConfigExtensions> | undefined,
-      );
+    const sortedHooks = [...(definition.beforeValidationHooks ?? [])].sort(
+      (a, b) => (a.order ?? 0) - (b.order ?? 0),
+    );
 
-      const beforeValidationHooks = [
-        ...(definition.beforeValidationHooks ?? []),
-      ].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-
-      for (const hook of beforeValidationHooks) {
-        const hookResult = await hook.run(context, effectiveRouteConfig);
-        if (hookResult instanceof Response) {
-          return hookResult;
-        }
-      }
-
+    const runPostHookPipeline = async (
+      context: Context,
+    ): Promise<Response> => {
       const requestValidation = await validateRouteRequest(
         context,
         definition.schema,
@@ -505,6 +624,99 @@ export class RouteManager {
         normalizedResult.status as never,
         normalizedResult.headers as never,
       );
+    };
+
+    const method = definition.method.toUpperCase();
+
+    /**
+     * Outer handler: runs sorted `beforeValidationHooks` (plugin-contributed
+     * auth hook, route-level hooks, etc.) so plugin extensions like `c.auth`
+     * are set before any middleware runs. Then middlewares wrap
+     * `runPostHookPipeline` (validation → procedures → handler) with
+     * Hono-style `(c, next)` semantics.
+     *
+     * This ordering matches the static type: `MiddlewareHandlerContext` claims
+     * plugin refinements apply, which is only truthful once hooks have run.
+     */
+    return async (context: Context): Promise<Response> => {
+      const effectiveRouteConfig = mergeRouteConfig(
+        this.defaultRouteConfig as RouteConfig<TRouteConfigExtensions>,
+        definition.config as RouteConfig<TRouteConfigExtensions> | undefined,
+      );
+
+      for (const hook of sortedHooks) {
+        const hookResult = await hook.run(context, effectiveRouteConfig);
+        if (hookResult instanceof Response) {
+          return hookResult;
+        }
+      }
+
+      if (middlewares.length === 0) {
+        return runPostHookPipeline(context);
+      }
+
+      let index = 0;
+
+      const next = async (): Promise<Response> => {
+        if (index >= middlewares.length) {
+          return runPostHookPipeline(context);
+        }
+        const current = middlewares[index];
+        index += 1;
+
+        try {
+          const result = await current.handle(context as never, next);
+          if (result instanceof Response) {
+            return result;
+          }
+          // Middleware returned void without calling `next()` — defensively
+          // continue the chain so the route still runs. This matches how most
+          // middleware systems treat a missing `next()` as a bug rather than a
+          // silent drop.
+          if (index <= middlewares.length) {
+            return next();
+          }
+          return runPostHookPipeline(context);
+        } catch (error) {
+          const normalizedError = normalizeHandlerThrownError(error);
+          const isInternalRuntimeError = normalizedError.status >= 500;
+
+          if (isInternalRuntimeError) {
+            const requestPath = context.req.path;
+            const originalError =
+              error instanceof Error
+                ? {
+                    name: error.name,
+                    message: error.message,
+                    stack: error.stack,
+                  }
+                : error;
+
+            console.error(
+              `[MiddlewareError] ${method} ${requestPath} -> ${normalizedError.status} ${normalizedError.code ?? "INTERNAL_ERROR"}`,
+              originalError,
+            );
+            return buildApiErrorResponse({
+              status: 500,
+              code: "INTERNAL_ERROR",
+              message: "An error occurred in a middleware.",
+            });
+          }
+
+          const throwValidation = validateRouteThrownError(
+            definition.schema,
+            normalizedError,
+          );
+
+          if (!throwValidation.ok) {
+            return throwValidation.response;
+          }
+
+          return buildApiErrorResponse(normalizedError);
+        }
+      };
+
+      return next();
     };
   }
 
