@@ -162,78 +162,115 @@ function normalizeHeaders(headers: Headers): Record<string, string> {
   return Object.fromEntries(headers.entries());
 }
 
-function hasNumericJsonType(value: unknown): boolean {
-  if (value === "number" || value === "integer") {
-    return true;
+/**
+ * Collects every concrete JSON Schema type referenced by a property schema —
+ * walking `type` (string or array), `anyOf`, and `oneOf` branches.
+ *
+ * Zod v4 emits nullable/optional/union schemas as `{ anyOf: [...] }` rather
+ * than a top-level `type: [...]`, so we need to recurse to detect numeric or
+ * boolean payloads inside e.g. `z.number().nullable()`.
+ */
+function collectJsonSchemaTypes(schema: unknown, types: Set<string>): void {
+  if (!schema || typeof schema !== "object") {
+    return;
   }
 
-  return (
-    Array.isArray(value) &&
-    value.some((entry) => entry === "number" || entry === "integer")
-  );
-}
+  const node = schema as {
+    type?: unknown;
+    anyOf?: unknown;
+    oneOf?: unknown;
+  };
 
-function hasBooleanJsonType(value: unknown): boolean {
-  if (value === "boolean") {
-    return true;
+  if (typeof node.type === "string") {
+    types.add(node.type);
+  } else if (Array.isArray(node.type)) {
+    for (const entry of node.type) {
+      if (typeof entry === "string") {
+        types.add(entry);
+      }
+    }
   }
 
-  return (
-    Array.isArray(value) && value.some((entry) => entry === "boolean")
-  );
+  for (const key of ["anyOf", "oneOf"] as const) {
+    const branches = node[key];
+    if (Array.isArray(branches)) {
+      for (const branch of branches) {
+        collectJsonSchemaTypes(branch, types);
+      }
+    }
+  }
 }
 
 /**
- * Top-level object keys whose JSON Schema type is numeric — same idea as path
- * params: `multipart/form-data` and query values arrive as strings.
+ * Decides how a stringly-typed scalar value (from form-data or a query string)
+ * should be coerced before validation.
+ *
+ * - Returns `"number"` if every non-`null` branch of the property schema is
+ *   numeric (`number` / `integer`), e.g. `z.number()`, `z.number().nullable()`.
+ * - Returns `"boolean"` if every non-`null` branch is `boolean`.
+ * - Returns `null` for ambiguous shapes like `z.union([z.string(), z.number()])`,
+ *   where coercing would silently change a value the user explicitly allowed
+ *   as a string.
  */
-function getNumericKeysFromObjectZodSchema(
+function detectScalarCoercionKind(
+  propertySchema: unknown,
+): "number" | "boolean" | null {
+  const types = new Set<string>();
+  collectJsonSchemaTypes(propertySchema, types);
+
+  if (types.size === 0) {
+    return null;
+  }
+
+  const nonNullTypes = [...types].filter((type) => type !== "null");
+  if (nonNullTypes.length === 0) {
+    return null;
+  }
+
+  if (nonNullTypes.every((type) => type === "number" || type === "integer")) {
+    return "number";
+  }
+
+  if (nonNullTypes.every((type) => type === "boolean")) {
+    return "boolean";
+  }
+
+  return null;
+}
+
+/**
+ * Maps top-level object keys to the coercion kind their schema demands —
+ * shared by multipart bodies and query strings (both arrive as strings on
+ * the wire, regardless of what the schema declares).
+ */
+function getScalarCoercionKindsForObjectZodSchema(
   schema: z.ZodTypeAny | undefined,
-): Set<string> {
+): Map<string, "number" | "boolean"> {
+  const kinds = new Map<string, "number" | "boolean">();
   if (!schema) {
-    return new Set<string>();
+    return kinds;
   }
 
   const jsonSchema = toJSONSchema(schema, { unrepresentable: "any" }) as {
     type?: unknown;
-    properties?: Record<string, { type?: unknown }>;
+    properties?: Record<string, unknown>;
   };
 
   if (jsonSchema.type !== "object" || !jsonSchema.properties) {
-    return new Set<string>();
+    return kinds;
   }
 
-  return new Set<string>(
-    Object.entries(jsonSchema.properties)
-      .filter(([, propertySchema]) => hasNumericJsonType(propertySchema.type))
-      .map(([key]) => key),
-  );
+  for (const [key, propertySchema] of Object.entries(jsonSchema.properties)) {
+    const kind = detectScalarCoercionKind(propertySchema);
+    if (kind) {
+      kinds.set(key, kind);
+    }
+  }
+
+  return kinds;
 }
 
-function getBooleanKeysFromObjectZodSchema(
-  schema: z.ZodTypeAny | undefined,
-): Set<string> {
-  if (!schema) {
-    return new Set<string>();
-  }
-
-  const jsonSchema = toJSONSchema(schema, { unrepresentable: "any" }) as {
-    type?: unknown;
-    properties?: Record<string, { type?: unknown }>;
-  };
-
-  if (jsonSchema.type !== "object" || !jsonSchema.properties) {
-    return new Set<string>();
-  }
-
-  return new Set<string>(
-    Object.entries(jsonSchema.properties)
-      .filter(([, propertySchema]) => hasBooleanJsonType(propertySchema.type))
-      .map(([key]) => key),
-  );
-}
-
-function coerceScalarStringForFormData(
+function coerceScalarStringForStringMap(
   value: string,
   kind: "number" | "boolean",
 ): unknown {
@@ -241,53 +278,58 @@ function coerceScalarStringForFormData(
     if (value.trim() === "") {
       return value;
     }
-    const n = Number(value);
-    return Number.isNaN(n) ? value : n;
+    const numericValue = Number(value);
+    return Number.isNaN(numericValue) ? value : numericValue;
   }
 
-  const t = value.trim().toLowerCase();
-  if (t === "true" || t === "1") {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true" || normalized === "1") {
     return true;
   }
-  if (t === "false" || t === "0") {
+  if (normalized === "false" || normalized === "0") {
     return false;
   }
   return value;
 }
 
-function coerceFormDataFieldValue(
+function coerceStringMapFieldValue(
   value: unknown,
   kind: "number" | "boolean",
 ): unknown {
   if (Array.isArray(value)) {
     return value.map((entry) =>
       typeof entry === "string"
-        ? coerceScalarStringForFormData(entry, kind)
+        ? coerceScalarStringForStringMap(entry, kind)
         : entry,
     );
   }
   if (typeof value === "string") {
-    return coerceScalarStringForFormData(value, kind);
+    return coerceScalarStringForStringMap(value, kind);
   }
   return value;
 }
 
-function coerceMultipartFormBodyForZodSchema(
-  body: Record<string, unknown>,
-  bodySchema: z.ZodTypeAny,
+/**
+ * Coerces string-valued fields in `data` (form-data body or parsed query) so
+ * that plain `z.number()` / `z.boolean()` schemas validate transport values
+ * that always arrive as strings — without forcing callers to litter every
+ * schema with `z.coerce.*`. Untouched whenever the schema is ambiguous (e.g.
+ * `z.union([z.string(), z.number()])`).
+ */
+function coerceStringMapForZodSchema(
+  data: Record<string, unknown>,
+  schema: z.ZodTypeAny,
 ): Record<string, unknown> {
-  const numericKeys = getNumericKeysFromObjectZodSchema(bodySchema);
-  const booleanKeys = getBooleanKeysFromObjectZodSchema(bodySchema);
-  if (numericKeys.size === 0 && booleanKeys.size === 0) {
-    return body;
+  const kindsByKey = getScalarCoercionKindsForObjectZodSchema(schema);
+  if (kindsByKey.size === 0) {
+    return data;
   }
 
-  const out: Record<string, unknown> = { ...body };
+  const out: Record<string, unknown> = { ...data };
   for (const key of Object.keys(out)) {
-    if (numericKeys.has(key)) {
-      out[key] = coerceFormDataFieldValue(out[key], "number");
-    } else if (booleanKeys.has(key)) {
-      out[key] = coerceFormDataFieldValue(out[key], "boolean");
+    const kind = kindsByKey.get(key);
+    if (kind) {
+      out[key] = coerceStringMapFieldValue(out[key], kind);
     }
   }
   return out;
@@ -296,22 +338,31 @@ function coerceMultipartFormBodyForZodSchema(
 function normalizeParams(
   context: Context,
   paramsSchema: RouteParamsSchema | undefined,
-): Record<string, string | number> {
+): Record<string, string | number | boolean> {
   const params = context.req.param();
   if (typeof params !== "object" || params === null || Array.isArray(params)) {
     return {};
   }
 
-  const numericParamKeys = getNumericKeysFromObjectZodSchema(paramsSchema);
-  return Object.fromEntries(
-    Object.entries(params).map(([key, value]) => {
-      const normalizedValue = String(value);
-      if (numericParamKeys.has(key)) {
-        return [key, Number(normalizedValue)];
-      }
-      return [key, normalizedValue];
-    }),
-  );
+  const coercionKindsByKey =
+    getScalarCoercionKindsForObjectZodSchema(paramsSchema);
+  const out: Record<string, string | number | boolean> = {};
+  for (const [key, value] of Object.entries(params)) {
+    const normalizedValue = String(value);
+    const kind = coercionKindsByKey.get(key);
+    if (kind) {
+      const coerced = coerceScalarStringForStringMap(normalizedValue, kind);
+      out[key] =
+        typeof coerced === "string" ||
+        typeof coerced === "number" ||
+        typeof coerced === "boolean"
+          ? coerced
+          : normalizedValue;
+    } else {
+      out[key] = normalizedValue;
+    }
+  }
+  return out;
 }
 
 async function readRequestBody(
@@ -737,7 +788,7 @@ export async function validateRouteRequest(
       parsedFiles = extraction.files;
 
       if (schema?.body) {
-        const bodyForParse = coerceMultipartFormBodyForZodSchema(
+        const bodyForParse = coerceStringMapForZodSchema(
           extraction.body,
           schema.body,
         );
@@ -813,7 +864,11 @@ export async function validateRouteRequest(
   }
 
   if (schema?.query) {
-    const queryResult = await schema.query.safeParseAsync(parsedQuery);
+    const queryForParse = coerceStringMapForZodSchema(
+      parsedQuery as Record<string, unknown>,
+      schema.query,
+    );
+    const queryResult = await schema.query.safeParseAsync(queryForParse);
 
     if (!queryResult.success) {
       validationErrors.query = queryResult.error.issues;
