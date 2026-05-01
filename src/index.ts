@@ -4,6 +4,10 @@ export { CorsPlugin } from "./plugins/cors.js";
 export { AuthenticationPlugin } from "./plugins/authentication.js";
 export { LoggerPlugin } from "./plugins/logger.js";
 export { ClientGenerationPlugin } from "./plugins/client-generation.js";
+export {
+  RatelimitPlugin,
+  InMemoryRatelimitStore,
+} from "./plugins/ratelimit/index.js";
 export { z } from "zod";
 export type {
   ServerConstructOptions,
@@ -25,6 +29,26 @@ export type {
   ClientGenerationRouteConfigExtension,
   ClientManifestGenerationAccess,
 } from "./types/client-generation.js";
+export type {
+  RatelimitDynamicNumber,
+  RatelimitScopePart,
+  RatelimitScopeExpression,
+  RatelimitFixedWindowRule,
+  RatelimitSlidingWindowRule,
+  RatelimitTokenBucketRule,
+  RatelimitLeakyBucketRule,
+  RatelimitRule,
+  RouteRatelimitConfig,
+  RatelimitRouteConfigExtension,
+  RatelimitState,
+  RatelimitConsumeResult,
+  RatelimitingRuleHelpers,
+  RatelimitingHelpers,
+  RatelimitStateRecord,
+  RatelimitStore,
+  RatelimitLimitReachedInfo,
+} from "./plugins/ratelimit/types.js";
+export type { RatelimitPluginOptions } from "./plugins/ratelimit/index.js";
 export type {
   RouteSchema,
   RouteResponseSchema,

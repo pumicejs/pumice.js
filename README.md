@@ -432,6 +432,184 @@ server
   .handle(() => ({ ok: true }));
 ```
 
+### `RatelimitPlugin`
+
+Pluggable request ratelimiting with four algorithms, configurable
+scoping, runtime helpers on `c.ratelimiting`, and full server/route
+config layering.
+
+```ts
+import { RatelimitPlugin, ServerBuilder } from "pumice.js";
+
+new ServerBuilder()
+  .use(RatelimitPlugin())
+  .config({ routes: { ratelimit: { limit: 100, timeframe: 60_000 } } })
+  .build();
+```
+
+The example above gives every route a default of **100 requests per
+minute, per IP, per matched route pattern**. Override per route via
+`route().config({ ratelimit: ... })`.
+
+#### Algorithms
+
+The `algorithm` field discriminates the rule shape — TypeScript only
+shows the relevant fields for the algorithm you pick. `burst`, for
+example, only appears on `"token-bucket"`.
+
+| Algorithm | When to use |
+|---|---|
+| `"fixed-window"` (default) | Cheap, predictable. Some boundary burst. |
+| `"sliding-window"` | Smoother than fixed; same memory cost. |
+| `"token-bucket"` | Allow controlled bursts (`burst > limit`). |
+| `"leaky-bucket"` | Smooth bursty traffic at a steady drain rate. |
+
+```ts
+// Fixed window (no algorithm field needed)
+{ ratelimit: { limit: 60, timeframe: 60_000 } }
+
+// Token bucket — `burst` only available on this variant
+{ ratelimit: {
+    algorithm: "token-bucket",
+    limit: 60,                // refill rate (tokens per timeframe)
+    timeframe: 60_000,
+    burst: 120,               // max bucket capacity
+  } }
+```
+
+#### Scope and `respectParams`
+
+`scope` controls who shares a bucket. `respectParams` controls whether
+path params are part of the bucket key.
+
+```ts
+// /users/[id]: each user gets their own 10/min budget (default behavior)
+.config({ ratelimit: { limit: 10, timeframe: 60_000 } })
+
+// /images/[id]: whole route shares 10/min, regardless of id
+.config({ ratelimit: { limit: 10, timeframe: 60_000, respectParams: false } })
+
+// Per-user (auth) limits, falling back to per-IP for anonymous traffic
+.config({ ratelimit: {
+  limit: 100,
+  timeframe: 60_000,
+  scope: { by: "user", fallback: "ip" },
+} })
+```
+
+Available scope parts: `"ip"`, `"user"`, `"route"`, `"global"`. Compose
+with an array (`["ip", "route"]`) or hand in a function for fully
+custom keys.
+
+#### Dynamic limits
+
+`limit`, `timeframe`, `cost`, and `burst` all accept a function that
+receives the request context — useful for tier-based throttling:
+
+```ts
+.config({ ratelimit: {
+  limit: (c) => c.auth.data?.user.tier === "pro" ? 1000 : 100,
+  timeframe: 60_000,
+} })
+```
+
+The default hook order (`-500`) runs **after** `AuthenticationPlugin`
+(`-1000`), so dynamic callbacks can safely read `c.auth`.
+
+#### Multiple stacked rules
+
+Stack rules to enforce burst + long-window limits together:
+
+```ts
+.config({ ratelimit: { rules: [
+  { name: "burst",  limit: 10,   timeframe: 1_000 },     // 10/sec
+  { name: "hourly", limit: 1000, timeframe: 3_600_000 }, // 1000/hr
+] } })
+```
+
+A 429 fires the moment **any** rule is exceeded.
+
+#### Runtime helpers (`c.ratelimiting`)
+
+When the plugin is registered, every handler gets a `c.ratelimiting`
+object for explicit control:
+
+```ts
+c.ratelimiting.consume(n?)    // increment by N (default 1)
+c.ratelimiting.block(ms)      // hard-block this scope for `ms` ms
+c.ratelimiting.reset()        // wipe counters and any active block
+c.ratelimiting.peek()         // { limit, remaining, resetAt }
+
+// Target a single named rule
+c.ratelimiting("burst").reset()
+```
+
+The killer pattern is **manual mode** combined with these helpers —
+e.g. failed-login throttling:
+
+```ts
+server.route().post().config({
+  ratelimit: {
+    scope: "ip",
+    limit: 5,
+    timeframe: 60_000,
+    manual: true,   // hook checks the bucket but doesn't auto-consume
+  },
+}).body(z.object({ email: z.string(), password: z.string() }))
+  .handle(async (c) => {
+    const ok = await checkPassword(c.body.email, c.body.password);
+    if (!ok) {
+      await c.ratelimiting.consume();
+      const { remaining } = await c.ratelimiting.peek();
+      if (remaining === 0) {
+        await c.ratelimiting.block(60 * 60_000); // 1h lockout
+      }
+      return c.error({ status: 401, code: "INVALID_CREDENTIALS" });
+    }
+    await c.ratelimiting.reset(); // clear failed-attempt counter on success
+    return { ok: true };
+  });
+```
+
+#### Disabling
+
+```ts
+.config({ ratelimit: false })                // shorthand
+.config({ ratelimit: { rules: [...], disabled: true } }) // drop the whole stack
+.config({ ratelimit: { ..., disabled: true } })          // drop a single rule
+```
+
+#### Custom store
+
+The default `InMemoryRatelimitStore` works for single-instance servers.
+For distributed deployments, supply your own `RatelimitStore`:
+
+```ts
+import { RatelimitPlugin, type RatelimitStore } from "pumice.js";
+
+const redisStore: RatelimitStore = {
+  async get(key) { /* HGETALL */ },
+  async set(key, record) { /* HSET + EXPIRE */ },
+  async delete(key) { /* DEL */ },
+};
+
+new ServerBuilder().use(RatelimitPlugin({ store: redisStore }));
+```
+
+#### Plugin options
+
+```ts
+RatelimitPlugin({
+  store,                  // default: InMemoryRatelimitStore
+  defaultAlgorithm,       // default: "fixed-window"
+  clientIp,               // default: x-forwarded-for / x-real-ip / cf-connecting-ip
+  userId,                 // default: c.auth?.data?.user?.id
+  hookOrder,              // default: -500 (after AuthenticationPlugin)
+  headers,                // "standard" | "legacy" | "both" | false; default: "standard"
+  onLimitReached,         // override the 429 response body
+});
+```
+
 ### `ClientGenerationPlugin`
 
 Serves a filtered JSON manifest of every route at `GET /@client` (path
@@ -544,7 +722,7 @@ return createApiJsonErrorResponse(403, { code: "FORBIDDEN", message: "..." });
 ### Values
 
 - `Server`, `ServerBuilder`
-- `CorsPlugin`, `LoggerPlugin`, `AuthenticationPlugin`, `ClientGenerationPlugin`
+- `CorsPlugin`, `LoggerPlugin`, `AuthenticationPlugin`, `ClientGenerationPlugin`, `RatelimitPlugin`, `InMemoryRatelimitStore`
 - `z` (re-export from Zod)
 - `buildApiJsonSuccessBody`, `createApiJsonErrorResponse`, `createApiJsonSuccessResponse`
 - `CLIENT_MANIFEST_METHOD_ORDER`
@@ -559,7 +737,8 @@ return createApiJsonErrorResponse(403, { code: "FORBIDDEN", message: "..." });
 - **Files**: `FileConfig`, `FilesConfig`, `UploadedFile`, `AllowedFileType`
 - **Client manifest**: `ClientManifest`, `ClientManifestFramework`, `ClientManifestMeta`, `ClientManifestMethod`, `ClientManifestRoute`, `ClientManifestRoutesByPath`, `RouteManifestSource`, `ClientGenerationPluginOptions`, `ClientGenerationRouteConfigExtension`, `ClientManifestGenerationAccess`
 - **JSON envelope**: `ApiJsonSuccessBody`, `ApiJsonErrorBody`
-- **Plugin options**: `LoggerPluginOptions`
+- **Plugin options**: `LoggerPluginOptions`, `RatelimitPluginOptions`
+- **Ratelimit**: `RatelimitRule`, `RatelimitFixedWindowRule`, `RatelimitSlidingWindowRule`, `RatelimitTokenBucketRule`, `RatelimitLeakyBucketRule`, `RouteRatelimitConfig`, `RatelimitRouteConfigExtension`, `RatelimitScopePart`, `RatelimitScopeExpression`, `RatelimitDynamicNumber`, `RatelimitState`, `RatelimitConsumeResult`, `RatelimitingHelpers`, `RatelimitingRuleHelpers`, `RatelimitStore`, `RatelimitStateRecord`, `RatelimitLimitReachedInfo`
 
 ---
 
