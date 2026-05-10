@@ -17,15 +17,34 @@ import type {
   ClientManifestGenerationAccess,
 } from "../types/client-generation.js";
 
+/**
+ * Options for {@link ClientGenerationPlugin}.
+ */
 export type ClientGenerationPluginOptions = {
   /**
    * Manifest HTTP path.
-   * @default "/@client"
+   *
+   * The plugin registers a single `GET <path>` handler. Defaults to `"/@client"`
+   * (the leading `@` keeps it out of the way of normal routes).
    */
   path?: string;
   /**
    * Optional gate invoked for every manifest request before the payload is built.
+   *
    * Use for API keys, internal tokens, or allowlists for codegen tools.
+   * Returning `{ allow: false }` short-circuits with a JSON error envelope
+   * (defaults: 403 / `FORBIDDEN`). Returning `{ allow: true }` lets the
+   * manifest through unchanged.
+   *
+   * @example
+   * ```ts
+   * authenticator: async (c) => {
+   *   const token = c.req.header("x-internal-token");
+   *   return token === process.env.CLIENT_GEN_TOKEN
+   *     ? { allow: true }
+   *     : { allow: false, status: 401, code: "UNAUTHORIZED", message: "Bad token" };
+   * }
+   * ```
    */
   authenticator?: (
     context: Context,
@@ -52,12 +71,38 @@ function filterManifestByExposeClient(manifest: ClientManifest): ClientManifest 
 }
 
 /**
- * Serves a filtered {@link ClientManifest} at `GET /@client` (configurable) and extends
- * route config with {@link ClientGenerationRouteConfigExtension} (`exposeClient`, etc.).
- * Responses use the shared JSON envelope helpers from `pumice.js`.
+ * Exposes the running app's route manifest as a JSON endpoint for client codegen.
  *
- * Example:
- * `use(ClientGenerationPlugin({ authenticator: async (c) => ... }))`
+ * What it adds:
+ * - **HTTP route**: registers `GET <path>` (default `/@client`) returning the
+ *   filtered {@link ClientManifest} — every route's path, params, schemas
+ *   (Zod → JSON Schema), per-method descriptors / merged config, and framework
+ *   metadata (name, version, server-listening timestamp).
+ * - **Route-config key**: `exposeClient?: boolean`. Set per-route or per-method
+ *   to `false` to hide the route from the generated manifest (still served
+ *   normally, just not advertised). Defaults to included.
+ * - **Optional authenticator**: gate access behind a token / allowlist for
+ *   internal-only manifests.
+ *
+ * Marked `unique: true` (id: `"pumice.js/client-generation"`) — registering
+ * twice throws.
+ *
+ * @example
+ * ```ts
+ * // expose at the default /@client, no auth (internal network only)
+ * server.use(ClientGenerationPlugin());
+ *
+ * // hide a route from codegen
+ * server.route().post().config({ exposeClient: false }).handle(...);
+ *
+ * // gated manifest
+ * server.use(ClientGenerationPlugin({
+ *   path: "/__codegen__/manifest",
+ *   authenticator: async (c) => c.req.header("x-codegen-token") === SECRET
+ *     ? { allow: true }
+ *     : { allow: false, status: 401 },
+ * }));
+ * ```
  */
 export function ClientGenerationPlugin(
   options: ClientGenerationPluginOptions = {},

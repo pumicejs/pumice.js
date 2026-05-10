@@ -26,6 +26,37 @@ type DeepMergeObjects<TBaseObject, TOverrideObject> = Simplify<
   }
 >;
 
+/**
+ * Fluent builder for a {@link Server}.
+ *
+ * Equivalent to constructing `new Server(options)` and chaining `.use(...)` /
+ * `.config(...)` directly, but lets you configure everything in one expression
+ * before any instance exists. Useful when callers need a single builder
+ * value to pass between modules before the server is materialized.
+ *
+ * Chain order:
+ *
+ * ```text
+ * new ServerBuilder()
+ *   ├── .basePath("routes")          // route discovery subdirectory (default: "routes")
+ *   ├── .rootDir(resolve(...))       // source root (default: <cwd>/src)
+ *   ├── .config({ routes: { ... } }) // server-wide / route-level defaults
+ *   ├── .use(plugin)                 // register plugins (chainable, type-narrowing)
+ *   └── .build()                     // returns a configured Server instance
+ * ```
+ *
+ * @example
+ * ```ts
+ * const server = new ServerBuilder()
+ *   .basePath("routes")
+ *   .use(AuthenticationPlugin({ field: "auth", authenticator }))
+ *   .use(RatelimitPlugin())
+ *   .config({ routes: { authentication: { required: true } } })
+ *   .build();
+ *
+ * await server.listen({ port: 3000 });
+ * ```
+ */
 export class ServerBuilder<
   TContextExtensions extends object = {},
   TRouteConfigExtensions extends object = {},
@@ -36,9 +67,11 @@ export class ServerBuilder<
   private readonly plugins: ServerPlugin[] = [];
 
   /**
-   * Sets the route discovery base directory name.
+   * Sets the subdirectory under `rootDir` that route / middleware files live in.
    *
-   * Example: `.basePath("routes")`
+   * Defaults to `"routes"` (so files under `<rootDir>/routes/**` are discovered).
+   *
+   * @example `.basePath("api")` → reads from `<rootDir>/api/**`.
    */
   public basePath(basePath: string): this {
     this.options.basePath = basePath;
@@ -46,9 +79,13 @@ export class ServerBuilder<
   }
 
   /**
-   * Sets the source root used when discovering file-system routes.
+   * Sets the absolute (or `cwd`-relative) source root for route discovery.
    *
-   * Example: `.rootDir(resolve(process.cwd(), "src"))`
+   * Defaults to `<cwd>/src`. Files under `<rootDir>/<basePath>/**` are scanned
+   * for `route.{ts,js,...}`, `index.{ts,js,...}`, `middleware.{ts,js,...}`,
+   * and any `*.mw.{ts,js,...}`.
+   *
+   * @example `.rootDir(resolve(process.cwd(), "src"))`
    */
   public rootDir(rootDir: string): this {
     this.options.rootDir = rootDir;
@@ -56,7 +93,22 @@ export class ServerBuilder<
   }
 
   /**
-   * Applies server-wide defaults (including route defaults).
+   * Sets server-wide defaults, deep-merged with any prior call.
+   *
+   * Mirrors {@link Server.config}: deep-merges into the existing config, and
+   * narrows `TDefaultRouteConfig` so type-level context refinements
+   * (e.g. `c.auth.data` becoming non-optional when `authentication.required`
+   * is the default) flow through to every route.
+   *
+   * @example
+   * ```ts
+   * .config({
+   *   routes: {
+   *     authentication: { required: true },
+   *     ratelimit: { limit: 100, timeframe: 60_000 },
+   *   },
+   * })
+   * ```
    */
   public config<TNextConfig extends RouteConfig<TRouteConfigExtensions>>(
     config: ServerConfig<TRouteConfigExtensions> & { routes?: TNextConfig },
@@ -78,7 +130,20 @@ export class ServerBuilder<
   }
 
   /**
-   * Registers a server plugin to be applied before listen.
+   * Registers a plugin to be applied when the server boots.
+   *
+   * Mirrors {@link Server.use}: each plugin can extend the request context,
+   * route config, route pipeline, and / or mount its own HTTP routes. The
+   * builder's generics widen with each `.use(...)` so plugin-contributed
+   * fields are visible everywhere downstream.
+   *
+   * @example
+   * ```ts
+   * builder
+   *   .use(new CorsPlugin())
+   *   .use(AuthenticationPlugin({ authenticator }))
+   *   .use(RatelimitPlugin());
+   * ```
    */
   public use<
     TPluginContextExtensions extends object,
@@ -107,7 +172,11 @@ export class ServerBuilder<
   }
 
   /**
-   * Builds a configured `Server` instance.
+   * Materializes a configured {@link Server} instance.
+   *
+   * Constructs the server with the accumulated options and re-registers each
+   * plugin on it, preserving registration order. Plugins are not applied yet
+   * — that happens on {@link Server.listen}.
    */
   public build(): Server<
     TContextExtensions,

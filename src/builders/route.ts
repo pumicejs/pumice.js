@@ -111,6 +111,30 @@ type GetRouteSchemaDefinition = {
 type RouteSchemaDefinitionForMethod<TMethod extends RouteMethod> =
   TMethod extends "get" ? GetRouteSchemaDefinition : RouteSchema;
 
+/**
+ * Stage of the route builder after an HTTP method has been selected
+ * (e.g. after `.get()`, `.post()`).
+ *
+ * From here, callers attach schemas (body / query / headers / response /
+ * throws / file / files), per-method config, an optional human-readable
+ * description, and finally call `.handle(handler)` to register the route.
+ *
+ * Re-entry into the previous stage happens automatically once `.handle()`
+ * runs, so a single chain can declare multiple methods on the same path.
+ *
+ * Method-specific constraints (enforced at type level via `this: never`):
+ * - GET routes cannot declare `body`, `file`, or `files`.
+ *
+ * @typeParam TSchema Accumulated schema declared so far on this method.
+ * @typeParam TMethod Selected HTTP method (`"get" | "post" | "put" | ...`).
+ * @typeParam TParamsSchema Path-params schema declared at the route level via `.params(...)`.
+ * @typeParam TContextExtensions Plugin-contributed context fields.
+ * @typeParam TFeatures Plugin-contributed route-config keys.
+ * @typeParam TContextRefinementRules Conditional context refinements based on effective config.
+ * @typeParam TRouteConfig Route-level defaults declared via `.route().config(...)`.
+ * @typeParam TEffectiveConfig Method-level effective config after merging route defaults with `.config(...)` calls in this stage.
+ * @typeParam TProcedures Tuple of procedures attached via `.procedure(...)` in the parent stage.
+ */
 export interface RouteBuilderMethodStage<
   TSchema extends RouteSchema = {},
   TMethod extends RouteMethod = RouteMethod,
@@ -123,9 +147,17 @@ export interface RouteBuilderMethodStage<
   TProcedures extends readonly AnyAppliedRouteProcedure[] = [],
 > {
   /**
-   * Sets request body validation schema.
+   * Declares the request body schema.
    *
-   * GET routes are blocked at type level via `this: never`.
+   * The request body is parsed as JSON (or `multipart/form-data` if `.file()` /
+   * `.files()` is also declared) and validated against `schema`. The validated
+   * value is surfaced on `c.body` with full type inference.
+   *
+   * Equivalent to passing `body` to `.schema({ body: ... })`.
+   *
+   * **Constraint**: GET routes are blocked at type level via `this: never`.
+   *
+   * @example `.body(z.object({ name: z.string(), email: z.string().email() }))`
    */
   body<TBodySchema extends z.ZodTypeAny>(
     this: TMethod extends "get"
@@ -156,7 +188,16 @@ export interface RouteBuilderMethodStage<
   /**
    * Applies per-method runtime config.
    *
-   * This config is merged with route-level defaults from `.route().config(...)`.
+   * Deep-merged in precedence order: server defaults < route-level
+   * `.route().config(...)` < this method-level call. Subsequent calls on the
+   * same method are also deep-merged. The merged result drives plugin
+   * behavior at request time (auth requirements, ratelimits, client-exposure
+   * flags, etc.).
+   *
+   * Type-level: tightens `TEffectiveConfig` so plugin context refinements
+   * (e.g. `c.auth.data` becoming non-optional) apply to this method's handler.
+   *
+   * @example `.config({ authentication: { required: true }, ratelimit: { limit: 10, timeframe: 60_000 } })`
    */
   config<TNextConfig extends RouteConfig<TFeatures>>(
     config: TNextConfig,
@@ -172,9 +213,12 @@ export interface RouteBuilderMethodStage<
     TProcedures
   >;
   /**
-   * Attaches human-readable metadata to the route.
+   * Attaches a human-readable description to the route.
    *
-   * Useful for generated docs and route inspection UIs.
+   * Surfaced in registration logs and in the generated client manifest as
+   * `methods[method].descriptor`. Has no runtime effect on routing.
+   *
+   * @example `.describe("Get a user by id")`
    */
   describe(description: string): RouteBuilderMethodStage<
     TSchema,
@@ -188,17 +232,29 @@ export interface RouteBuilderMethodStage<
     TProcedures
   >;
   /**
-   * Merges into the current route schema (keys you omit are kept, including
-   * `file` / `files` from `.file()` / `.files()`).
+   * Declares the request / response schema in one shot, deep-merging into any
+   * existing partial schema (keys you omit are kept — including `file` /
+   * `files` previously declared via `.file()` / `.files()`).
    *
    * Available keys:
-   * - `body`, `query`, `headers`
-   * - `file`, `files` (multipart upload contracts)
-   * - `response` (2xx schemas only)
-   * - `throws` (4xx schemas only; supports descriptor/code-map entries)
+   * - `body`, `query`, `headers` — request validation; values surface on `c.body` / `c.query` / `c.headers`
+   * - `file`, `files` — multipart upload contracts; values surface on `c.file` / `c.files` (non-GET only)
+   * - `response` — success response schema (single Zod schema or `{ 2xx: schema }` map; constrains `c.json`, `c.response`, and the implicit handler return value)
+   * - `throws` — typed error contracts per 4xx status; constrains `c.error` and validates thrown `ApiError`s
    *
-   * Example:
-   * `schema({ query, response: { 200: User }, throws: { 404: { data: NotFoundData, message: "User not found" } } })`
+   * GET-specific constraint: `body`, `file`, and `files` are typed as `never`.
+   *
+   * @example
+   * ```ts
+   * .schema({
+   *   query: z.object({ page: z.coerce.number().default(1) }),
+   *   response: { 200: UserListSchema },
+   *   throws: {
+   *     404: { data: NotFoundDataSchema, message: "User not found" },
+   *     422: { INVALID_INPUT: { data: ValidationDataSchema, issues: z.array(IssueSchema) } },
+   *   },
+   * })
+   * ```
    */
   schema<TNextSchema extends RouteSchemaDefinitionForMethod<TMethod>>(
     schema: TNextSchema & RouteSchemaDefinitionForMethod<TMethod>,
@@ -214,7 +270,13 @@ export interface RouteBuilderMethodStage<
     TProcedures
   >;
   /**
-   * Sets query-string validation schema.
+   * Declares the query-string validation schema.
+   *
+   * Validated values are surfaced on `c.query`. Use `z.coerce.*` (or the
+   * framework's auto-coercion of query strings) to convert raw strings into
+   * numbers / booleans.
+   *
+   * @example `.query(z.object({ page: z.coerce.number().default(1), search: z.string().optional() }))`
    */
   query<TQuerySchema extends z.ZodTypeAny>(
     schema: TQuerySchema,
@@ -230,7 +292,13 @@ export interface RouteBuilderMethodStage<
     TProcedures
   >;
   /**
-   * Sets request headers validation schema.
+   * Declares the request-headers validation schema.
+   *
+   * Validated values are surfaced on `c.headers`. Header names are matched
+   * case-insensitively per HTTP semantics; declare them lowercase in the
+   * schema.
+   *
+   * @example `.headers(z.object({ "x-api-key": z.string() }))`
    */
   headers<THeadersSchema extends z.ZodTypeAny>(
     schema: THeadersSchema,
@@ -246,10 +314,22 @@ export interface RouteBuilderMethodStage<
     TProcedures
   >;
   /**
-   * Declares successful response schema(s).
+   * Declares the success-response schema.
    *
-   * Use either one schema for all 2xx responses, or a status map like:
-   * `{ 200: SuccessSchema, 201: CreatedSchema }`
+   * Two shapes are accepted:
+   * - A single Zod schema applied to every 2xx response.
+   * - A `{ status: schema }` map keyed by explicit 2xx codes.
+   *
+   * Constrains the type of `c.json(...)`, the explicit `c.response({ status, data })`
+   * factory, and the implicit handler return value. Returning a payload that
+   * doesn't satisfy the schema is a type error (and a runtime error if the
+   * schema parses fail).
+   *
+   * @example
+   * ```ts
+   * .response(UserSchema) // every 2xx returns User
+   * .response({ 200: UserSchema, 201: CreatedUserSchema })
+   * ```
    */
   response<TResponseSchema extends RouteResponseSchema>(
     schema: TResponseSchema & RouteResponseSchemaInput<TResponseSchema>,
@@ -265,13 +345,31 @@ export interface RouteBuilderMethodStage<
     TProcedures
   >;
   /**
-   * Declares typed thrown error shapes for 4xx statuses.
+   * Declares typed thrown-error contracts (4xx only).
    *
-   * Example:
-   * `throws({ 404: { data: NotFoundData, issues: z.array(z.object({ path: z.array(z.string()), message: z.string() })) } })`
+   * Three entry shapes per status:
+   * - **Direct schema**: a Zod schema applied to `data`.
+   *   `404: z.object({ id: z.string() })`
+   * - **Descriptor**: `{ data?, issues?, message? }` for separately-typed
+   *   payload + sub-error list + default message.
+   *   `404: { data: NotFoundData, issues: z.array(IssueSchema), message: "User not found" }`
+   * - **Code map**: `{ CODE: descriptor | schema }` when a single status
+   *   represents multiple semantic codes.
+   *   `400: { VALIDATION_FAILED: { data: ValidationData, issues: z.array(IssueSchema) } }`
    *
-   * You can also map by code:
-   * `throws({ 400: { VALIDATION_FAILED: { data: ValidationData, issues: z.array(IssueSchema) } } })`
+   * Constrains the union accepted by `c.error({ status, code?, data?, ... })`,
+   * and validates errors thrown out of the handler against the matching entry.
+   *
+   * @example
+   * ```ts
+   * .throws({
+   *   404: { data: NotFoundDataSchema, message: "Not found" },
+   *   422: {
+   *     INVALID_BODY: { data: BodyValidationSchema, issues: z.array(IssueSchema) },
+   *     UNPROCESSABLE: { data: UnprocessableSchema },
+   *   },
+   * })
+   * ```
    */
   throws<TThrowsSchema extends RouteThrowsSchemaMap>(
     schema: TThrowsSchema & RouteThrowsSchemaInput<TThrowsSchema>,
@@ -287,13 +385,25 @@ export interface RouteBuilderMethodStage<
     TProcedures
   >;
   /**
-   * Declares a single-file upload for this route.
+   * Declares a single-file upload contract.
    *
-   * The request body is parsed as `multipart/form-data` and the file at
-   * `config.fieldName` (default `"file"`) is surfaced on `c.file`. Remaining
-   * form fields are still validated against the `body` schema (if present).
+   * The request body is parsed as `multipart/form-data`. The file at
+   * `config.fieldName` (default `"file"`) is surfaced on `c.file` (typed as
+   * `UploadedFile` or `UploadedFile | undefined` depending on `required`).
+   * Remaining non-file form fields are still validated against the declared
+   * `body` schema, if any.
    *
-   * GET routes are blocked at type level via `this: never`.
+   * Cannot coexist with `.files(...)` — runtime throws if both are declared.
+   *
+   * **Constraint**: GET routes are blocked at type level via `this: never`.
+   *
+   * @example
+   * ```ts
+   * .post()
+   *   .file({ fieldName: "avatar", maxSize: 5 * 1024 * 1024, allowedTypes: ["image/*"] })
+   *   .body(z.object({ caption: z.string().optional() }))
+   *   .handle(async (c) => { await uploads.save(c.file); return { ok: true }; });
+   * ```
    */
   file<TFileConfig extends FileConfig = FileConfig>(
     this: TMethod extends "get"
@@ -322,13 +432,23 @@ export interface RouteBuilderMethodStage<
     TProcedures
   >;
   /**
-   * Declares a multi-file upload for this route.
+   * Declares a multi-file upload contract.
    *
-   * The request body is parsed as `multipart/form-data` and all files under
-   * `config.fieldName` (default `"files"`) are surfaced on `c.files`. Remaining
-   * form fields are still validated against the `body` schema (if present).
+   * The request body is parsed as `multipart/form-data`. Every file submitted
+   * under `config.fieldName` (default `"files"`) is collected into `c.files`
+   * (always an array). Remaining non-file form fields are still validated
+   * against the declared `body` schema, if any.
    *
-   * GET routes are blocked at type level via `this: never`.
+   * Cannot coexist with `.file(...)` — runtime throws if both are declared.
+   *
+   * **Constraint**: GET routes are blocked at type level via `this: never`.
+   *
+   * @example
+   * ```ts
+   * .post()
+   *   .files({ fieldName: "attachments", maxCount: 10, totalMaxSize: 50 * 1024 * 1024 })
+   *   .handle(async (c) => { for (const f of c.files) await uploads.save(f); return { ok: true }; });
+   * ```
    */
   files<TFilesConfig extends FilesConfig = FilesConfig>(
     this: TMethod extends "get"
@@ -357,11 +477,39 @@ export interface RouteBuilderMethodStage<
     TProcedures
   >;
   /**
-   * Finalizes route registration with a handler.
+   * Finalizes route registration by attaching a request handler.
    *
-   * The handler's context receives:
-   * - `c.params` merged from route + all attached procedures (route params win on collision)
-   * - `c.procedures` keyed by contributions from procedures that apply to this method
+   * Returns to the parent stage, so additional methods can be declared on the
+   * same path (e.g. add a `.post()` after a `.get()` for the same file).
+   *
+   * Handler context (`c`):
+   * - `c.body` / `c.query` / `c.headers` / `c.params` — validated request data,
+   *   typed from the declared schemas. `c.params` is merged from the route
+   *   plus every applied procedure (route wins on collision).
+   * - `c.file` / `c.files` — populated only when `.file(...)` / `.files(...)` is declared.
+   * - `c.procedures` — contributions from every procedure attached via
+   *   `.procedure(...)` whose `applyOnMethods` includes this method.
+   * - `c.json(payload, status?, headers?)` — JSON response (auto-wrapped in 2xx envelope).
+   * - `c.response({ status, data, code?, message?, issues? })` — explicit typed response.
+   * - `c.error({ status, code?, data?, message?, issues? })` — typed `ApiError` factory; throw the result.
+   * - `c.returns(payload)` — type-only assertion that the implicit return matches the declared schema.
+   * - Plus any plugin-contributed fields (e.g. `c.auth`, `c.ratelimiting`).
+   *
+   * Handler return value:
+   * - An object satisfying the response schema (auto-wrapped in 2xx envelope).
+   * - The result of `c.response(...)` for an explicit status / metadata.
+   * - A raw `Response` to bypass the framework envelope entirely.
+   *
+   * @example
+   * ```ts
+   * .get()
+   *   .schema({ response: { 200: UserSchema }, throws: { 404: { data: NotFoundData } } })
+   *   .handle(async (c) => {
+   *     const user = await users.find(c.params.id);
+   *     if (!user) throw c.error({ status: 404, data: { id: c.params.id } });
+   *     return user; // implicit 200 + envelope
+   *   });
+   * ```
    */
   handle(
     handler: RouteHandler<
@@ -385,6 +533,25 @@ export interface RouteBuilderMethodStage<
   >;
 }
 
+/**
+ * Initial / re-entry stage of the route builder — the state returned by
+ * `server.route()` and re-entered after each `.handle(...)` call.
+ *
+ * From here, callers configure values shared across every method declared on
+ * the route (path params, route-level config, procedures), then pick an HTTP
+ * method to enter the {@link RouteBuilderMethodStage}.
+ *
+ * Stage-level setup (must come BEFORE selecting an HTTP method):
+ * - `.params(zodObject)` — path-params schema; merged with procedure params.
+ * - `.config(partial)` — defaults for every method on this route.
+ * - `.procedure(factory, options?)` — reusable per-request logic.
+ *
+ * Method selectors (each enters {@link RouteBuilderMethodStage}):
+ * - `.get()`, `.post()`, `.put()`, `.patch()`, `.delete()`, `.options()`, `.any()`.
+ *
+ * After `.handle(...)` registers a method, the chain returns here and you can
+ * declare another method on the same path.
+ */
 export interface RouteBuilderMethodSelectionStage<
   TParamsSchema extends RouteParamsSchema | undefined = undefined,
   TContextExtensions extends object = {},
@@ -394,7 +561,24 @@ export interface RouteBuilderMethodSelectionStage<
   TProcedures extends readonly AnyAppliedRouteProcedure[] = [],
 > {
   /**
-   * Sets route-level params schema for all methods from this builder.
+   * Declares the path-params schema shared by every method on this route.
+   *
+   * The schema is merged with each attached procedure's `params` schema
+   * (procedure params first, route params last — so route keys win on
+   * collision). Mixed sources must all be `z.object(...)` schemas.
+   *
+   * Validated values are surfaced on `c.params`.
+   *
+   * Must be called before selecting an HTTP method; calling it after `.get()`
+   * (etc.) throws.
+   *
+   * @example
+   * ```ts
+   * // src/routes/users/[userId]/posts/[postId]/route.ts
+   * server.route()
+   *   .params(z.object({ userId: z.coerce.number(), postId: z.coerce.number() }))
+   *   .get().handle((c) => ({ userId: c.params.userId, postId: c.params.postId }));
+   * ```
    */
   params<TNextParamsSchema extends RouteParamsSchema>(
     schema: TNextParamsSchema,
@@ -407,7 +591,17 @@ export interface RouteBuilderMethodSelectionStage<
     TProcedures
   >;
   /**
-   * Applies runtime config defaults for all methods registered from this builder.
+   * Sets route-level config defaults applied to every method declared on this
+   * route (and deep-merged with method-level `.config(...)` calls).
+   *
+   * Precedence: server defaults < route-level (this) < method-level. Multiple
+   * route-level calls deep-merge.
+   *
+   * Must be called before selecting an HTTP method to count as a route-level
+   * default; if called after a method is selected, it acts as method-level
+   * config (handled by the overload on the {@link RouteBuilder} class).
+   *
+   * @example `.config({ authentication: { required: true } })`
    */
   config<TNextConfig extends RouteConfig<TFeatures>>(
     config: TNextConfig,
@@ -422,13 +616,25 @@ export interface RouteBuilderMethodSelectionStage<
   /**
    * Attaches a procedure to every method declared from this builder.
    *
-   * - Procedures run in the order attached.
-   * - `options.applyOnMethods` optionally narrows which methods execute it;
-   *   types on `c.procedures` automatically reflect that filter.
-   * - The procedure's params merge with the route's params (route wins on collision).
+   * - Procedures run in the order attached, after request validation and
+   *   before the route handler.
+   * - `options.applyOnMethods` narrows which methods execute the procedure;
+   *   `c.procedures` types automatically reflect that filter (procedures
+   *   excluded for the current method are typed as absent).
+   * - The procedure's `paramsSchema` is merged into the route's params schema
+   *   regardless of `applyOnMethods` (path params are always present).
+   * - Call the factory with use-site config: `userProcedure({ skipOwnershipCheck: true })`.
    *
-   * Example:
-   * `.procedure(userProcedure({ skipOwnershipCheck: true }), { applyOnMethods: ["get"] })`
+   * Must be called before selecting an HTTP method.
+   *
+   * @example
+   * ```ts
+   * server.route()
+   *   .procedure(userProcedure())
+   *   .procedure(adminGuard(), { applyOnMethods: ["delete"] })
+   *   .get().handle((c) => c.procedures.user)
+   *   .delete().handle(async (c) => { await users.remove(c.procedures.user.id); });
+   * ```
    */
   procedure<
     TProcedure extends AnyRouteProcedureDefinition,
@@ -445,7 +651,12 @@ export interface RouteBuilderMethodSelectionStage<
     readonly [...TProcedures, AppliedRouteProcedure<TProcedure, TMethods>]
   >;
   /**
-   * Registers an `any` method route.
+   * Selects a wildcard route that matches every HTTP method on this path.
+   *
+   * Useful for catch-all proxies, OPTIONS handlers, or shared response
+   * shapers. Equivalent to Hono's `app.all(...)`.
+   *
+   * @example `server.route().any().handle((c) => c.text("ok"));`
    */
   any(): RouteBuilderMethodStage<
     {},
@@ -459,7 +670,13 @@ export interface RouteBuilderMethodSelectionStage<
     TProcedures
   >;
   /**
-   * Registers a `GET` route.
+   * Selects an HTTP `GET` route.
+   *
+   * GET-specific constraints enforced at type level:
+   * - No request body (`.body()` / `body` in `.schema()`).
+   * - No file uploads (`.file()` / `.files()`).
+   *
+   * @example `server.route().get().schema({ response: UserSchema }).handle((c) => user);`
    */
   get(): RouteBuilderMethodStage<
     {},
@@ -473,7 +690,19 @@ export interface RouteBuilderMethodSelectionStage<
     TProcedures
   >;
   /**
-   * Registers a `POST` route.
+   * Selects an HTTP `POST` route.
+   *
+   * Typically used for resource creation. Supports body validation and file
+   * uploads (single via `.file(...)` or multi via `.files(...)`).
+   *
+   * @example
+   * ```ts
+   * server.route()
+   *   .post()
+   *   .body(z.object({ name: z.string() }))
+   *   .schema({ response: { 201: UserSchema } })
+   *   .handle(async (c) => c.response({ status: 201, data: await users.create(c.body) }));
+   * ```
    */
   post(): RouteBuilderMethodStage<
     {},
@@ -487,7 +716,18 @@ export interface RouteBuilderMethodSelectionStage<
     TProcedures
   >;
   /**
-   * Registers a `PUT` route.
+   * Selects an HTTP `PUT` route.
+   *
+   * Typically used for full-resource replacement (idempotent). Supports body
+   * validation and file uploads.
+   *
+   * @example
+   * ```ts
+   * server.route()
+   *   .put()
+   *   .body(UserSchema)
+   *   .handle(async (c) => users.replace(c.params.id, c.body));
+   * ```
    */
   put(): RouteBuilderMethodStage<
     {},
@@ -501,7 +741,18 @@ export interface RouteBuilderMethodSelectionStage<
     TProcedures
   >;
   /**
-   * Registers a `PATCH` route.
+   * Selects an HTTP `PATCH` route.
+   *
+   * Typically used for partial-resource update. Supports body validation and
+   * file uploads.
+   *
+   * @example
+   * ```ts
+   * server.route()
+   *   .patch()
+   *   .body(z.object({ name: z.string().optional() }))
+   *   .handle(async (c) => users.update(c.params.id, c.body));
+   * ```
    */
   patch(): RouteBuilderMethodStage<
     {},
@@ -515,7 +766,17 @@ export interface RouteBuilderMethodSelectionStage<
     TProcedures
   >;
   /**
-   * Registers a `DELETE` route.
+   * Selects an HTTP `DELETE` route.
+   *
+   * Typically used for resource deletion. Supports body validation when the
+   * client needs to send confirmation payloads.
+   *
+   * @example
+   * ```ts
+   * server.route()
+   *   .delete()
+   *   .handle(async (c) => { await users.remove(c.params.id); return c.response({ status: 204, data: undefined }); });
+   * ```
    */
   delete(): RouteBuilderMethodStage<
     {},
@@ -529,7 +790,17 @@ export interface RouteBuilderMethodSelectionStage<
     TProcedures
   >;
   /**
-   * Registers an `OPTIONS` route.
+   * Selects an HTTP `OPTIONS` route.
+   *
+   * Typically used for explicit CORS preflight responses or to advertise
+   * allowed methods. Most apps rely on the {@link CorsPlugin} instead.
+   *
+   * @example
+   * ```ts
+   * server.route()
+   *   .options()
+   *   .handle((c) => new Response(null, { headers: { Allow: "GET, POST" } }));
+   * ```
    */
   options(): RouteBuilderMethodStage<
     {},
@@ -544,6 +815,20 @@ export interface RouteBuilderMethodSelectionStage<
   >;
 }
 
+/**
+ * Concrete implementation backing both {@link RouteBuilderMethodSelectionStage}
+ * and {@link RouteBuilderMethodStage}.
+ *
+ * The class itself uses a small state machine: `pendingMethod` is set when an
+ * HTTP method selector (`.get()`, `.post()`, ...) runs and is cleared by
+ * `.handle(...)`. While set, the builder is in the "method stage"; while
+ * cleared, it is in the "selection stage". The fluent interfaces narrow
+ * which methods are visible to callers in each phase.
+ *
+ * Most callers should not interact with this class directly — use
+ * `server.route()` (which returns the typed selection-stage interface) and
+ * let TypeScript infer the rest of the chain.
+ */
 export class RouteBuilder<
   TParamsSchema extends RouteParamsSchema | undefined = undefined,
   TContextExtensions extends object = {},
@@ -1377,6 +1662,13 @@ export class RouteBuilder<
   }
 }
 
+/**
+ * Creates a fresh route builder.
+ *
+ * Internal-ish — `server.route()` calls this to wire the registration callback
+ * to the current source file. Callers building custom integrations can use
+ * this factory directly with their own `register` function.
+ */
 export function createRouteBuilder(
   register: RouteRegistration,
 ): RouteBuilderMethodSelectionStage;

@@ -413,24 +413,42 @@ function createRatelimitingHelpers(
 }
 
 /**
- * Registers request ratelimiting with pluggable algorithms, scopes,
+ * Adds configurable request ratelimiting with pluggable algorithms, scopes,
  * and runtime helpers.
  *
- * Configure global defaults via `server.config({ routes: { ratelimit: ... } })`
- * and override per-route via `server.route().config({ ratelimit: ... })`.
+ * What it adds:
+ * - **Route-config key**: `ratelimit` accepting a single rule, a `{ rules: [...] }`
+ *   array (stack multiple rules — 429 if any one is exceeded), or `false` to
+ *   disable for a specific route.
+ * - **Context field**: `c.ratelimiting` — runtime helpers for `consume()`,
+ *   `block()`, `reset()`, `peek()`. Call as a function with a rule name to
+ *   target one rule (`c.ratelimiting("login-burst").reset()`).
+ * - **Pre-validation hook** (default order `-500`, after auth's `-1000` so
+ *   dynamic limits / scopes can read `c.auth`) that:
+ *   1. Resolves dynamic `limit` / `timeframe` / `cost` values per request.
+ *   2. Builds the bucket key from the configured scope.
+ *   3. For non-`manual` rules, consumes a token; if any rule exceeds, returns
+ *      a 429 response (overridable via `onLimitReached`).
+ *   4. Sets `RateLimit-*` (and / or legacy `X-RateLimit-*`) headers on the
+ *      response.
  *
- * Inside a handler, use `c.ratelimiting.consume()`, `.block()`,
- * `.reset()`, and `.peek()` for runtime control. Target a single rule
- * by name with `c.ratelimiting("rule-name").reset()`.
+ * Algorithms: `fixed-window` (default), `sliding-window`, `token-bucket`,
+ * `leaky-bucket` — see {@link RatelimitRule}.
  *
- * Example:
+ * Persistence: defaults to {@link InMemoryRatelimitStore}. For multi-instance
+ * deployments, supply a Redis-backed (or similar) {@link RatelimitStore}.
+ *
+ * Marked `unique: true` (id: `"pumice.js/ratelimit"`) — registering twice
+ * throws.
+ *
+ * @example
  * ```ts
  * server.use(RatelimitPlugin());
  *
  * // Global defaults: 100 req/min per IP for every route
  * server.config({ routes: { ratelimit: { limit: 100, timeframe: 60_000 } } });
  *
- * // Tighter, per-user limits on a specific route
+ * // Tighter, per-user limits with a burst allowance
  * server.route().post().config({
  *   ratelimit: {
  *     scope: ["user", "route"],
@@ -440,6 +458,18 @@ function createRatelimitingHelpers(
  *     burst: 10,
  *   },
  * }).handle(...);
+ *
+ * // Manual mode — only count failures (login throttling)
+ * server.route().post().config({
+ *   ratelimit: { scope: "ip", limit: 5, timeframe: 60_000, manual: true },
+ * }).handle(async (c) => {
+ *   if (!await checkPassword(c.body)) {
+ *     await c.ratelimiting.consume();
+ *     throw c.error({ status: 401, code: "INVALID_CREDENTIALS" });
+ *   }
+ *   await c.ratelimiting.reset();
+ *   return signIn(c.body);
+ * });
  * ```
  */
 export function RatelimitPlugin(

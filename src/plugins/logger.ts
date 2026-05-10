@@ -3,20 +3,27 @@ import type { ServerPlugin } from "../types/plugin.js";
 
 type LoggerLike = Pick<Console, "info" | "error">;
 
+/**
+ * Options for {@link LoggerPlugin}.
+ */
 export type LoggerPluginOptions = {
   /**
-   * Custom logger implementation.
+   * Custom logger implementation. Must implement `info` and `error`.
    *
+   * Useful for piping into pino, winston, or a structured-log destination.
    * Defaults to the global `console`.
    */
   logger?: LoggerLike;
   /**
-   * Whether to log a line when the request starts.
+   * Whether to emit a `[REQUEST]` line when the request starts.
+   *
+   * Disable to halve log volume in environments that only need response logs.
    * Defaults to `true`.
    */
   logRequestStart?: boolean;
   /**
-   * Whether to log a line when the response is finished.
+   * Whether to emit a `[RESPONSE]` line when the response is finished.
+   *
    * Defaults to `true`.
    */
   logResponseEnd?: boolean;
@@ -36,10 +43,32 @@ function getClientIp(context: Context): string | undefined {
 }
 
 /**
- * Logs each request/response lifecycle with duration and status.
+ * Logs each request / response lifecycle with method, path, status, duration,
+ * client IP, and user-agent.
  *
- * Example:
- * `use(new LoggerPlugin())`
+ * Mounts as a Hono middleware at `*`, so it observes every request — including
+ * 404s and errors. Errors thrown downstream are logged with `error=true` and
+ * re-thrown so other error handling continues to work.
+ *
+ * Log lines (single line per event):
+ * - `[REQUEST] METHOD /path ip=... ua="..."`
+ * - `[RESPONSE] METHOD /path status=... duration_ms=... content_length=...`
+ *
+ * Client IP resolution follows `x-forwarded-for` (first entry) →
+ * `x-real-ip` → `cf-connecting-ip`, so the plugin works behind the common
+ * proxy / CDN setups.
+ *
+ * @example
+ * ```ts
+ * // default: log both request and response with the global console
+ * server.use(new LoggerPlugin());
+ *
+ * // pipe into a structured logger; only log response lines
+ * server.use(new LoggerPlugin({
+ *   logger: { info: pino.info.bind(pino), error: pino.error.bind(pino) },
+ *   logRequestStart: false,
+ * }));
+ * ```
  */
 export class LoggerPlugin implements ServerPlugin {
   public constructor(private readonly options: LoggerPluginOptions = {}) {}
