@@ -4,6 +4,7 @@ export { CorsPlugin } from "./plugins/cors.js";
 export { AuthenticationPlugin } from "./plugins/authentication.js";
 export { LoggerPlugin } from "./plugins/logger.js";
 export { ClientGenerationPlugin } from "./plugins/client-generation.js";
+export { DocsPlugin } from "./plugins/docs.js";
 export {
   RatelimitPlugin,
   InMemoryRatelimitStore,
@@ -29,6 +30,21 @@ export type {
   ClientGenerationRouteConfigExtension,
   ClientManifestGenerationAccess,
 } from "./types/client-generation.js";
+export type { DocsPluginOptions } from "./plugins/docs.js";
+export type {
+  DocsTagDefinition,
+  DocsGroupDefinition,
+  DocsGroupMatch,
+  DocsRouteMetadata,
+  DocsRouteExample,
+  DocsRouteConfigExtension,
+  DocsUnknownReferenceStrategy,
+  DocsManifestTag,
+  DocsManifestRoute,
+  DocsManifestGroup,
+  DocsManifest,
+  DocsManifestAccess,
+} from "./types/docs.js";
 export type {
   RatelimitDynamicNumber,
   RatelimitScopePart,
