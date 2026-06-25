@@ -1,6 +1,6 @@
 {
   "name": "pumice.js",
-  "version": "0.0.16",
+  "version": "0.0.17",
   "description": "File-system based typed api server framework",
   "type": "module",
   "main": "dist/index.js",
