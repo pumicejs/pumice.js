@@ -6,6 +6,13 @@ A file-system based, end-to-end typed server framework for Node.js — built on
 Write a folder of route files, get a validated, typed, introspectable HTTP
 API without ceremony.
 
+> **Looking for the full guide?** The [`docs/`](./docs/) folder contains
+> the long-form documentation — concept pages for routing / route builder /
+> procedures / middleware / plugins, and a dedicated page for every shipped
+> plugin (CORS, Logger, Authentication, Ratelimit, ClientGeneration,
+> [DocsPlugin](./docs/plugins/docs.md)). Start with
+> [docs/README.md](./docs/README.md).
+
 ---
 
 ## Highlights
@@ -632,6 +639,40 @@ Hide individual routes with route config:
 server.route().get().config({ exposeClient: false }).handle(() => ({ /* ... */ }));
 ```
 
+### `DocsPlugin`
+
+Adds documentation metadata — a tag registry with colors, a
+customizable nested group tree (with path / method / tag match rules), and
+per-route `summary` / `description` / `deprecated` / `hidden` / `examples`.
+Serves the resulting JSON at `GET /@docs` (path configurable) for the
+companion `pumice-docs` generator.
+
+```ts
+import { DocsPlugin } from "pumice.js";
+
+new ServerBuilder().use(
+  DocsPlugin({
+    tags: [
+      { name: "auth", label: "Authentication", color: "#22c55e" },
+      { name: "internal", label: "Internal", color: "#64748b" },
+    ],
+    groups: [
+      { name: "API",  label: "Public API" },
+      { name: "Auth", parent: "API", match: { pathPrefix: "/auth" } },
+      { name: "Ops",  match: { tag: "internal" } },
+    ],
+  }),
+);
+
+server.route()
+  .config({ docs: { tags: ["auth"], summary: "Sign in" } })
+  .post().handle(...);
+```
+
+See [docs/plugins/docs.md](./docs/plugins/docs.md) for the full reference
+(tag/group matching precedence, nested groups, examples, the manifest
+shape, and `pumice-docs` integration).
+
 ---
 
 ## Custom Plugins
@@ -722,7 +763,7 @@ return createApiJsonErrorResponse(403, { code: "FORBIDDEN", message: "..." });
 ### Values
 
 - `Server`, `ServerBuilder`
-- `CorsPlugin`, `LoggerPlugin`, `AuthenticationPlugin`, `ClientGenerationPlugin`, `RatelimitPlugin`, `InMemoryRatelimitStore`
+- `CorsPlugin`, `LoggerPlugin`, `AuthenticationPlugin`, `ClientGenerationPlugin`, `RatelimitPlugin`, `InMemoryRatelimitStore`, `DocsPlugin`
 - `z` (re-export from Zod)
 - `buildApiJsonSuccessBody`, `createApiJsonErrorResponse`, `createApiJsonSuccessResponse`
 - `CLIENT_MANIFEST_METHOD_ORDER`
@@ -737,7 +778,8 @@ return createApiJsonErrorResponse(403, { code: "FORBIDDEN", message: "..." });
 - **Files**: `FileConfig`, `FilesConfig`, `UploadedFile`, `AllowedFileType`
 - **Client manifest**: `ClientManifest`, `ClientManifestFramework`, `ClientManifestMeta`, `ClientManifestMethod`, `ClientManifestRoute`, `ClientManifestRoutesByPath`, `RouteManifestSource`, `ClientGenerationPluginOptions`, `ClientGenerationRouteConfigExtension`, `ClientManifestGenerationAccess`
 - **JSON envelope**: `ApiJsonSuccessBody`, `ApiJsonErrorBody`
-- **Plugin options**: `LoggerPluginOptions`, `RatelimitPluginOptions`
+- **Plugin options**: `LoggerPluginOptions`, `RatelimitPluginOptions`, `DocsPluginOptions`
+- **Docs**: `DocsTagDefinition`, `DocsGroupDefinition`, `DocsGroupMatch`, `DocsRouteMetadata`, `DocsRouteExample`, `DocsRouteConfigExtension`, `DocsUnknownReferenceStrategy`, `DocsManifestTag`, `DocsManifestRoute`, `DocsManifestGroup`, `DocsManifest`, `DocsManifestAccess`
 - **Ratelimit**: `RatelimitRule`, `RatelimitFixedWindowRule`, `RatelimitSlidingWindowRule`, `RatelimitTokenBucketRule`, `RatelimitLeakyBucketRule`, `RouteRatelimitConfig`, `RatelimitRouteConfigExtension`, `RatelimitScopePart`, `RatelimitScopeExpression`, `RatelimitDynamicNumber`, `RatelimitState`, `RatelimitConsumeResult`, `RatelimitingHelpers`, `RatelimitingRuleHelpers`, `RatelimitStore`, `RatelimitStateRecord`, `RatelimitLimitReachedInfo`
 
 ---
