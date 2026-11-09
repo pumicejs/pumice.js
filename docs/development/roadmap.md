@@ -20,6 +20,8 @@ A PR that builds an entry moves it to "Done"; one that finds something new adds 
   `trustProxy`); no body size limit (§2.2, now `bodyLimit`, default 1 MiB).
 - 2026-11-09: released as **0.1.0** from CI, with provenance, through trusted publishing. The
   stale `claude/priceless-mccarthy-ed0bd6` branch is deleted.
+- 2026-11-09: the playbook's `api-*` skills corrected (filstawski/playbook#2: `.query()` for the
+  search example, a gated client manifest, procedures' statuses in `.throws()`) and updated here.
 
 ## Bugs
 
@@ -141,12 +143,6 @@ plugin that needs a hook.
 
 ## Repository
 
-- **Playbook skills** (`filstawski/playbook`, vendored here): `api-route-structure`'s
-  `posts/search.ts` uses `.params()` where it needs `.query()`; `api-framework-stack`'s entrypoint
-  assumes `listen()` resolves once listening (§1.4) and its `ClientGenerationPlugin()` is
-  unauthenticated (§2.4); `api-route-procedures`' `throw 404` becomes a 500 on routes that
-  declare `.throws(...)` (§1.6). The corrections are filstawski/playbook#2. *Trigger:* that PR
-  merged; then `npx skills update` here.
 - **Staged publishing** (far future). npm can hold each CI-published version until a maintainer
   approves it with 2FA (`npm stage publish`, npm 11.15 or later; approve on npmjs.com or with
   `npm stage approve`), so a compromised workflow or CI dependency can't publish alone.

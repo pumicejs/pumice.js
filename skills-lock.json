@@ -5,19 +5,19 @@
       "source": "filstawski/playbook",
       "sourceType": "github",
       "skillPath": "skills/api/stack/api-framework-stack/SKILL.md",
-      "computedHash": "af21580c6eeef037dd1deba2d101b74e269f3e6f6cbd4ae9255804714505cb21"
+      "computedHash": "becb6585fe4aa88fec3f69d7531a914f3ed2a244a0efa8977d2d44daea4cf5dc"
     },
     "api-route-procedures": {
       "source": "filstawski/playbook",
       "sourceType": "github",
       "skillPath": "skills/api/routing/api-route-procedures/SKILL.md",
-      "computedHash": "1ac3234748fc1da0c549f37a27212020c2daa61b671d1de594126b983e5a6b81"
+      "computedHash": "13f882f075ed46b8271cb98bd4e2b11079a4e8de8698c474e7b1f566e681a0a9"
     },
     "api-route-structure": {
       "source": "filstawski/playbook",
       "sourceType": "github",
       "skillPath": "skills/api/routing/api-route-structure/SKILL.md",
-      "computedHash": "ec1f3b4472efe6ca38f35a6770af04cc6a282957d495b52f62189a8e804e0c35"
+      "computedHash": "1dafa5bba5655086219b259fcb961b25c8cad8563809e842c797ef7161df613d"
     },
     "code-polish": {
       "source": "filstawski/playbook",
