@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "skills": {
+    "api-framework-stack": {
+      "source": "filstawski/playbook",
+      "sourceType": "github",
+      "skillPath": "skills/api/stack/api-framework-stack/SKILL.md",
+      "computedHash": "af21580c6eeef037dd1deba2d101b74e269f3e6f6cbd4ae9255804714505cb21"
+    },
+    "api-route-procedures": {
+      "source": "filstawski/playbook",
+      "sourceType": "github",
+      "skillPath": "skills/api/routing/api-route-procedures/SKILL.md",
+      "computedHash": "1ac3234748fc1da0c549f37a27212020c2daa61b671d1de594126b983e5a6b81"
+    },
+    "api-route-structure": {
+      "source": "filstawski/playbook",
+      "sourceType": "github",
+      "skillPath": "skills/api/routing/api-route-structure/SKILL.md",
+      "computedHash": "ec1f3b4472efe6ca38f35a6770af04cc6a282957d495b52f62189a8e804e0c35"
+    },
+    "code-polish": {
+      "source": "filstawski/playbook",
+      "sourceType": "github",
+      "skillPath": "skills/code-polish/SKILL.md",
+      "computedHash": "adfdd0b1cfeb748e6e84c386268d213c4ba2faef9451e20eec2827209377e3df"
+    },
+    "docs-agent-handoff-spec": {
+      "source": "filstawski/playbook",
+      "sourceType": "github",
+      "skillPath": "skills/docs/docs-agent-handoff-spec/SKILL.md",
+      "computedHash": "7f37f04d92a8054c8f344c78d9ad97604e89706704fd6caf78be9570737e6d04"
+    },
+    "docs-feature-planning-spec": {
+      "source": "filstawski/playbook",
+      "sourceType": "github",
+      "skillPath": "skills/docs/docs-feature-planning-spec/SKILL.md",
+      "computedHash": "7eaeecf5e36ba3f9571b6622ea036e411c85967c2e1a7e65ab98f114d15d39d4"
+    },
+    "docs-roadmap-notes": {
+      "source": "filstawski/playbook",
+      "sourceType": "github",
+      "skillPath": "skills/docs/docs-roadmap-notes/SKILL.md",
+      "computedHash": "c2740f1f8f2764dc43d225b4587d87072b41d3c1e3a643ddc6829812b62cb983"
+    },
+    "extract-reusable-primitives": {
+      "source": "filstawski/playbook",
+      "sourceType": "github",
+      "skillPath": "skills/extract-reusable-primitives/SKILL.md",
+      "computedHash": "1961f8aa0d5b430a2ad324ad34ab9b3b59df7bd1246478e313aff358a9bf651c"
+    },
+    "git-commit-messages": {
+      "source": "filstawski/playbook",
+      "sourceType": "github",
+      "skillPath": "skills/git/git-commit-messages/SKILL.md",
+      "computedHash": "b50f14dc281d2745f4d4baef4b88d7422a9bd3a7210aa48728813afaddae7e52"
+    },
+    "git-commit-requires-approval": {
+      "source": "filstawski/playbook",
+      "sourceType": "github",
+      "skillPath": "skills/git/git-commit-requires-approval/SKILL.md",
+      "computedHash": "f1399772c5b7495a8eee9762f682c8f9cf4c090c09d66ee22259ac7174ab4527"
+    },
+    "git-pull-requests": {
+      "source": "filstawski/playbook",
+      "sourceType": "github",
+      "skillPath": "skills/git/git-pull-requests/SKILL.md",
+      "computedHash": "2fde221af08b5d04ab4116c254c123c25db47591eb4ce92eac120f495048a6db"
+    },
+    "same-import-upgrade-path": {
+      "source": "filstawski/playbook",
+      "sourceType": "github",
+      "skillPath": "skills/same-import-upgrade-path/SKILL.md",
+      "computedHash": "7e1b4666b6c8c98d3c86d23ab10fa95f94842fd2ffb50ec8f1c7a80ca677421c"
+    }
+  }
+}
