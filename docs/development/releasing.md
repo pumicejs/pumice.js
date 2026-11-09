@@ -48,9 +48,20 @@ GitHub's OIDC.
 1. npmjs.com → the `pumice.js` package → **Settings** → **Trusted Publisher** → **GitHub
    Actions**.
 2. Organization or user: `pumicejs`; repository: `pumice.js`; workflow filename: `release.yml`;
-   environment: leave empty.
+   environment: leave empty; tick **Allow npm publish**.
 3. Save. Optionally, under **Publishing access**, require two-factor authentication and
    disallow tokens, so only the workflow can publish.
+
+**Allow npm publish** must be ticked on the trusted publisher. Configurations created after
+3 September 2026 allow only `npm stage publish` by default, and the workflow runs a plain
+`npm publish`, so without the box the publish fails with `E403 … OIDC permission denied for
+this action` (it did for v0.1.0). The workflow doesn't need **Allow npm dist-tag**.
+
+A new trusted publisher must complete its first successful publish within 2 days, or it
+expires and has to be deleted and created again. After a publish, the registry can take a
+minute or two before `npm install` sees the new version.
+(Staged publishing, where each version waits for a maintainer's 2FA approval, is
+deliberately not used; see the roadmap.)
 
 Provenance needs a public repository (pumice.js is). The workflow needs npm 11.5.1 or later,
 which Node 24 brings; it checks before publishing.
