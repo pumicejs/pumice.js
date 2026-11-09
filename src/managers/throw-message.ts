@@ -1,25 +1,12 @@
 import type {
   RouteSchema,
-  RouteThrowDescriptor,
   RouteThrowSchema,
   RouteThrowsCodeSchemaMap,
 } from "../types/schema.js";
-
-function isZodSchemaLike(value: unknown): value is { safeParse: unknown } {
-  return typeof value === "object" && value !== null && "safeParse" in value;
-}
-
-function isRouteThrowDescriptor(value: unknown): value is RouteThrowDescriptor {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !isZodSchemaLike(value) &&
-    ("data" in value || "issues" in value || "message" in value)
-  );
-}
+import { isThrowDescriptor, isZodSchema } from "../schema/guards.js";
 
 function getDescriptorMessage(value: unknown): string | undefined {
-  if (!isRouteThrowDescriptor(value)) {
+  if (!isThrowDescriptor(value)) {
     return undefined;
   }
 
@@ -47,7 +34,7 @@ export function resolveDefaultThrowMessage(
   }
 
   const statusSchema = throwsSchema[status];
-  if (!statusSchema || isZodSchemaLike(statusSchema)) {
+  if (!statusSchema || isZodSchema(statusSchema)) {
     return undefined;
   }
 

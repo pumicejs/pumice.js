@@ -28,26 +28,8 @@ import { assertUniquePluginRegistration } from "../plugin-registration.js";
 import type { Simplify } from "../types/schema.js";
 import type { ClientManifest } from "../client-manifest.js";
 import { createApiJsonErrorResponse } from "../http/json-envelope.js";
-
-type IsPlainObject<TValue> = TValue extends object
-  ? TValue extends (...args: never[]) => unknown
-    ? false
-    : TValue extends readonly unknown[]
-      ? false
-      : true
-  : false;
-
-type DeepMergeObjects<TBaseObject, TOverrideObject> = Simplify<
-  Omit<TBaseObject, keyof TOverrideObject> & {
-    [TKey in keyof TOverrideObject]: TKey extends keyof TBaseObject
-      ? IsPlainObject<TBaseObject[TKey]> extends true
-        ? IsPlainObject<TOverrideObject[TKey]> extends true
-          ? DeepMergeObjects<TBaseObject[TKey], TOverrideObject[TKey]>
-          : TOverrideObject[TKey]
-        : TOverrideObject[TKey]
-      : TOverrideObject[TKey];
-  }
->;
+import { logInfo } from "../utils/log.js";
+import type { DeepMergeObjects } from "../utils/types.js";
 
 /**
  * Top-level pumice.js HTTP server.
@@ -99,6 +81,7 @@ export class Server<
   private configState: ServerConfig<TRouteConfigExtensions>;
   /** ISO-8601 from the Node `listening` callback after `serve()` binds. */
   private clientManifestListeningSince?: string;
+  private loading?: Promise<string[]>;
 
   /**
    * Creates a new server.
@@ -145,10 +128,7 @@ export class Server<
   public async listen(options: ServerListenOptions = {}): Promise<void> {
     const port = options.port ?? 3000;
 
-    await this.applyPlugins();
-
-    const loadedRoutes = await this.routes.registerDiscovered();
-    console.log("Routes loaded:", loadedRoutes);
+    await this.load();
 
     serve(
       {
@@ -160,7 +140,45 @@ export class Server<
       },
     );
 
-    console.log(`Server listening at http://localhost:${port}`);
+    logInfo(`Server listening at http://localhost:${port}`);
+  }
+
+  /**
+   * Applies the plugins and discovers the route tree, without binding a port.
+   *
+   * {@link Server.listen} calls it first; call it yourself to use the server
+   * in-process (tests, other runtimes) through {@link Server.fetch}. Safe to
+   * call any number of times: the work happens once, and every call resolves
+   * to the URL paths that were registered.
+   *
+   * @example
+   * ```ts
+   * await server.load();
+   * const res = await server.fetch(new Request("http://test/users/1"));
+   * ```
+   */
+  public load(): Promise<string[]> {
+    this.loading ??= (async () => {
+      await this.applyPlugins();
+      const loadedRoutes = await this.routes.registerDiscovered();
+      logInfo("Routes loaded:", loadedRoutes);
+      return loadedRoutes;
+    })();
+    return this.loading;
+  }
+
+  /**
+   * Answers one request in-process, exactly as the HTTP listener would.
+   *
+   * Loads the server first if {@link Server.load} hasn't run yet. `env` is
+   * passed through to Hono as its bindings; on Node, `listen()` passes the
+   * `incoming` / `outgoing` pair there, which is where the client's socket
+   * address comes from (see the `trustProxy` options of the rate-limit and
+   * logger plugins).
+   */
+  public async fetch(request: Request, env?: unknown): Promise<Response> {
+    await this.load();
+    return this.app.fetch(request, env);
   }
 
   /**

@@ -1,0 +1,985 @@
+{
+  "version": 3,
+  "meta": {
+    "generatedAt": "2026-01-01T00:00:00.000Z",
+    "framework": {
+      "name": "pumice.js",
+      "version": "0.0.0-fixture"
+    }
+  },
+  "defaultRouteConfig": {
+    "authentication": {
+      "required": true
+    },
+    "ratelimit": {
+      "limit": 100,
+      "timeframe": 60000
+    }
+  },
+  "routes": [
+    {
+      "path": "/admin/jobs",
+      "routeFile": "routes/admin/jobs/route.ts",
+      "routeLevelConfig": {
+        "docs": {
+          "hidden": true
+        }
+      },
+      "methods": {
+        "get": {
+          "descriptor": "List jobs",
+          "effectiveConfig": {
+            "authentication": {
+              "required": true
+            },
+            "ratelimit": {
+              "limit": 100,
+              "timeframe": 60000
+            },
+            "docs": {
+              "group": "not-declared"
+            }
+          },
+          "beforeValidationHooksCount": 2
+        },
+        "post": {
+          "descriptor": "Run a job",
+          "effectiveConfig": {
+            "authentication": {
+              "required": true
+            },
+            "ratelimit": {
+              "limit": 100,
+              "timeframe": 60000
+            },
+            "docs": {
+              "hidden": true
+            },
+            "bodyLimit": 1048576
+          },
+          "beforeValidationHooksCount": 2
+        }
+      }
+    },
+    {
+      "path": "/orgs/:orgId/boards",
+      "routeFile": "routes/orgs/[orgId]/boards/route.ts",
+      "routeLevelConfig": {
+        "docs": {
+          "description": "Includes **archived** boards.",
+          "tags": [
+            "unknown-tag"
+          ]
+        }
+      },
+      "methods": {
+        "get": {
+          "descriptor": "List boards",
+          "effectiveConfig": {
+            "authentication": {
+              "required": true
+            },
+            "ratelimit": {
+              "limit": 100,
+              "timeframe": 60000
+            },
+            "docs": {
+              "description": "Includes **archived** boards.",
+              "tags": [
+                "unknown-tag"
+              ]
+            }
+          },
+          "beforeValidationHooksCount": 2,
+          "schema": {
+            "query": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "object",
+              "properties": {
+                "page": {
+                  "default": 1,
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 100
+                }
+              },
+              "required": [
+                "page"
+              ],
+              "additionalProperties": false
+            },
+            "response": {
+              "shape": "single",
+              "jsonSchema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "number"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "path": "/orgs/:orgId/boards/:boardId",
+      "routeFile": "routes/orgs/[orgId]/boards/[boardId]/route.ts",
+      "routeLevelConfig": {},
+      "params": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "orgId": {
+            "type": "string"
+          },
+          "boardId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "orgId",
+          "boardId"
+        ],
+        "additionalProperties": false
+      },
+      "methods": {
+        "get": {
+          "descriptor": "Get a board",
+          "effectiveConfig": {
+            "authentication": {
+              "required": true
+            },
+            "ratelimit": {
+              "limit": 100,
+              "timeframe": 60000
+            }
+          },
+          "beforeValidationHooksCount": 2,
+          "schema": {
+            "response": {
+              "shape": "single",
+              "jsonSchema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "number"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "title"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "patch": {
+          "descriptor": "Rename a board",
+          "effectiveConfig": {
+            "authentication": {
+              "required": true
+            },
+            "ratelimit": {
+              "limit": 100,
+              "timeframe": 60000
+            },
+            "bodyLimit": 1048576
+          },
+          "beforeValidationHooksCount": 2,
+          "schema": {
+            "body": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "object",
+              "properties": {
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "title"
+              ],
+              "additionalProperties": false
+            },
+            "response": {
+              "shape": "single",
+              "type": "void"
+            }
+          }
+        }
+      }
+    },
+    {
+      "path": "/orgs/:orgId/logo",
+      "routeFile": "routes/orgs/[orgId]/logo/route.ts",
+      "routeLevelConfig": {
+        "docs": {
+          "tags": [
+            "media"
+          ]
+        }
+      },
+      "methods": {
+        "put": {
+          "descriptor": "Upload an organization logo",
+          "effectiveConfig": {
+            "authentication": {
+              "required": true
+            },
+            "ratelimit": {
+              "limit": 100,
+              "timeframe": 60000
+            },
+            "docs": {
+              "tags": [
+                "media"
+              ]
+            },
+            "bodyLimit": 1048576
+          },
+          "beforeValidationHooksCount": 2,
+          "schema": {
+            "body": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "object",
+              "properties": {
+                "caption": {
+                  "type": "string"
+                },
+                "crop": {
+                  "type": "object",
+                  "properties": {
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "response": {
+              "shape": "single",
+              "jsonSchema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri"
+                  }
+                },
+                "required": [
+                  "url"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "file": {
+              "fieldName": "logo",
+              "allowedTypes": [
+                "image/svg+xml",
+                "image/png"
+              ],
+              "required": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "path": "/orgs/:orgId/members",
+      "routeFile": "routes/orgs/[orgId]/members/route.ts",
+      "routeLevelConfig": {},
+      "methods": {
+        "get": {
+          "descriptor": "List members",
+          "effectiveConfig": {
+            "authentication": {
+              "required": true
+            },
+            "ratelimit": {
+              "limit": 100,
+              "timeframe": 60000
+            }
+          },
+          "beforeValidationHooksCount": 2,
+          "schema": {
+            "query": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "object",
+              "properties": {
+                "page": {
+                  "default": 1,
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 100
+                }
+              },
+              "required": [
+                "page"
+              ],
+              "additionalProperties": false
+            },
+            "response": {
+              "shape": "single",
+              "jsonSchema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "userId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "userId"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "path": "/ping",
+      "routeFile": "routes/ping/route.ts",
+      "routeLevelConfig": {
+        "authentication": {
+          "required": false
+        }
+      },
+      "methods": {
+        "any": {
+          "descriptor": "Ping",
+          "effectiveConfig": {
+            "authentication": {
+              "required": false
+            },
+            "ratelimit": {
+              "limit": 100,
+              "timeframe": 60000
+            },
+            "bodyLimit": 1048576
+          },
+          "beforeValidationHooksCount": 2,
+          "schema": {
+            "response": {
+              "shape": "single",
+              "jsonSchema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "path": "/users",
+      "routeFile": "routes/users/route.ts",
+      "routeLevelConfig": {
+        "docs": {
+          "tags": [
+            "users"
+          ],
+          "summary": "List users",
+          "order": 1
+        }
+      },
+      "methods": {
+        "get": {
+          "descriptor": "List users",
+          "effectiveConfig": {
+            "authentication": {
+              "required": true
+            },
+            "ratelimit": {
+              "limit": 100,
+              "timeframe": 60000
+            },
+            "docs": {
+              "tags": [
+                "users"
+              ],
+              "summary": "List users",
+              "order": 1
+            }
+          },
+          "beforeValidationHooksCount": 2,
+          "schema": {
+            "query": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "object",
+              "properties": {
+                "page": {
+                  "default": 1,
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "admin",
+                    "member"
+                  ]
+                }
+              },
+              "required": [
+                "page"
+              ],
+              "additionalProperties": false
+            },
+            "response": {
+              "shape": "single",
+              "jsonSchema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "Stable user id"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string",
+                      "format": "email",
+                      "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                    },
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "admin",
+                        "member"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                    },
+                    "bio": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "email",
+                    "role",
+                    "createdAt",
+                    "bio",
+                    "tags"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "descriptor": "Create a user",
+          "effectiveConfig": {
+            "authentication": {
+              "required": true
+            },
+            "ratelimit": {
+              "limit": 100,
+              "timeframe": 60000
+            },
+            "docs": {
+              "tags": [
+                "users",
+                "beta"
+              ],
+              "examples": [
+                {
+                  "name": "Minimal",
+                  "request": {
+                    "name": "Ann",
+                    "email": "ann@example.com"
+                  }
+                }
+              ]
+            },
+            "bodyLimit": 1048576
+          },
+          "beforeValidationHooksCount": 2,
+          "schema": {
+            "body": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "email": {
+                  "type": "string",
+                  "format": "email",
+                  "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                },
+                "role": {
+                  "default": "member",
+                  "type": "string",
+                  "enum": [
+                    "admin",
+                    "member"
+                  ]
+                }
+              },
+              "required": [
+                "name",
+                "email",
+                "role"
+              ],
+              "additionalProperties": false
+            },
+            "response": {
+              "shape": "statusMap",
+              "statuses": {
+                "201": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "Stable user id"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string",
+                      "format": "email",
+                      "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                    },
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "admin",
+                        "member"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                    },
+                    "bio": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "email",
+                    "role",
+                    "createdAt",
+                    "bio",
+                    "tags"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "throws": {
+              "409": {
+                "kind": "descriptor",
+                "message": "Email already registered"
+              },
+              "422": {
+                "kind": "schema",
+                "jsonSchema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "field": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "field"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "path": "/users/:userId",
+      "routeFile": "routes/users/[userId]/route.ts",
+      "routeLevelConfig": {},
+      "methods": {
+        "get": {
+          "descriptor": "Get a user",
+          "effectiveConfig": {
+            "authentication": {
+              "required": true
+            },
+            "ratelimit": {
+              "limit": 100,
+              "timeframe": 60000
+            }
+          },
+          "beforeValidationHooksCount": 2,
+          "schema": {
+            "headers": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "object",
+              "properties": {
+                "x-request-id": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "response": {
+              "shape": "single",
+              "jsonSchema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Stable user id"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "admin",
+                      "member"
+                    ]
+                  },
+                  "createdAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                  },
+                  "bio": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "name",
+                  "email",
+                  "role",
+                  "createdAt",
+                  "bio",
+                  "tags"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "throws": {
+              "403": {
+                "kind": "codeMap",
+                "codes": {
+                  "NOT_OWNER": {
+                    "kind": "descriptor",
+                    "message": "Not your account"
+                  },
+                  "SUSPENDED": {
+                    "kind": "descriptor",
+                    "message": "Account suspended",
+                    "data": {
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "type": "object",
+                      "properties": {
+                        "until": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "until"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "delete": {
+          "descriptor": "Delete a user",
+          "effectiveConfig": {
+            "authentication": {
+              "required": true
+            },
+            "ratelimit": {
+              "limit": 100,
+              "timeframe": 60000
+            },
+            "docs": {
+              "deprecated": true
+            },
+            "bodyLimit": 1048576
+          },
+          "beforeValidationHooksCount": 2,
+          "schema": {
+            "response": {
+              "shape": "single",
+              "type": "void"
+            }
+          }
+        }
+      }
+    },
+    {
+      "path": "/users/:userId/avatar",
+      "routeFile": "routes/users/[userId]/avatar/route.ts",
+      "routeLevelConfig": {
+        "docs": {
+          "tags": [
+            "media"
+          ]
+        }
+      },
+      "params": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId"
+        ],
+        "additionalProperties": false
+      },
+      "methods": {
+        "put": {
+          "descriptor": "Upload an avatar",
+          "effectiveConfig": {
+            "authentication": {
+              "required": true
+            },
+            "ratelimit": {
+              "limit": 100,
+              "timeframe": 60000
+            },
+            "docs": {
+              "tags": [
+                "media"
+              ]
+            },
+            "bodyLimit": 2162688
+          },
+          "beforeValidationHooksCount": 2,
+          "schema": {
+            "body": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "object",
+              "properties": {
+                "alt": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "response": {
+              "shape": "statusMap",
+              "statuses": {
+                "200": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "format": "uri"
+                    }
+                  },
+                  "required": [
+                    "url"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "file": {
+              "fieldName": "avatar",
+              "maxSize": 2097152,
+              "allowedTypes": [
+                "image/png",
+                "image/jpeg"
+              ],
+              "required": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "path": "/users/:userId/photos",
+      "routeFile": "routes/users/[userId]/photos/route.ts",
+      "routeLevelConfig": {
+        "docs": {
+          "tags": [
+            "media"
+          ]
+        }
+      },
+      "params": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId"
+        ],
+        "additionalProperties": false
+      },
+      "methods": {
+        "post": {
+          "descriptor": "Upload photos",
+          "effectiveConfig": {
+            "authentication": {
+              "required": true
+            },
+            "ratelimit": {
+              "limit": 100,
+              "timeframe": 60000
+            },
+            "docs": {
+              "tags": [
+                "media"
+              ]
+            },
+            "bodyLimit": 4259840
+          },
+          "beforeValidationHooksCount": 2,
+          "schema": {
+            "response": {
+              "shape": "single",
+              "jsonSchema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "count": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "count"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "files": {
+              "fieldName": "files",
+              "maxSize": 1048576,
+              "totalMaxSize": 4194304,
+              "allowedTypes": [
+                "image/*"
+              ],
+              "minCount": 1,
+              "maxCount": 5
+            }
+          }
+        }
+      }
+    }
+  ]
+}

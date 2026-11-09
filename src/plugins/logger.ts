@@ -1,5 +1,5 @@
-import type { Context } from "hono";
 import type { ServerPlugin } from "../types/plugin.js";
+import { resolveClientIp, type TrustProxy } from "../utils/client-ip.js";
 
 type LoggerLike = Pick<Console, "info" | "error">;
 
@@ -27,20 +27,13 @@ export type LoggerPluginOptions = {
    * Defaults to `true`.
    */
   logResponseEnd?: boolean;
+  /**
+   * Which `X-Forwarded-For` entries to believe for the logged `ip=`. Default
+   * `false`: the socket's peer address. Same meaning as the rate limiter's
+   * option (see {@link TrustProxy}).
+   */
+  trustProxy?: TrustProxy;
 };
-
-function getClientIp(context: Context): string | undefined {
-  const forwardedFor = context.req.header("x-forwarded-for");
-  if (forwardedFor) {
-    return forwardedFor.split(",")[0]?.trim();
-  }
-
-  return (
-    context.req.header("x-real-ip") ??
-    context.req.header("cf-connecting-ip") ??
-    undefined
-  );
-}
 
 /**
  * Logs each request / response lifecycle with method, path, status, duration,
@@ -83,7 +76,8 @@ export class LoggerPlugin implements ServerPlugin {
       const method = context.req.method;
       const path = context.req.path;
       const userAgent = context.req.header("user-agent") ?? "unknown";
-      const clientIp = getClientIp(context) ?? "unknown";
+      const clientIp =
+        resolveClientIp(context, this.options.trustProxy) ?? "unknown";
 
       if (shouldLogStart) {
         logger.info(

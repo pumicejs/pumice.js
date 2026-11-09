@@ -3,7 +3,8 @@ import type { z } from "zod";
 import type { ApiError, ApiErrorIssue } from "../errors/api.js";
 import type { FileConfig, FilesConfig, UploadedFile } from "./file.js";
 
-export type Simplify<T> = { [TKey in keyof T]: T[TKey] } & {};
+export type { Simplify } from "../utils/types.js";
+import type { Simplify } from "../utils/types.js";
 
 export type AnyRouteSchema = z.ZodTypeAny;
 export type RouteParamsSchema = z.ZodTypeAny;
@@ -212,12 +213,6 @@ type InferIssueField<TIssues> = [TIssues] extends [void] | [undefined]
   ? { issues?: ApiErrorIssue[] }
   : { issues?: TIssues };
 
-type InferIssueItem<TIssues> =
-  TIssues extends Array<infer TIssue> ? TIssue : ApiErrorIssue;
-type NormalizeIssues<TIssues> = [TIssues] extends [never]
-  ? ApiErrorIssue[]
-  : TIssues;
-
 type InferThrowData<TThrowSchema> = TThrowSchema extends z.ZodTypeAny
   ? z.infer<TThrowSchema>
   : TThrowSchema extends RouteThrowDescriptor
@@ -297,7 +292,10 @@ type InferExplicitResponseOptions<
       headers?: Record<string, string>;
     };
 
+// `TResponse` is a phantom parameter: it isn't read in the body, but it keeps
+// the declared response contract attached to the value for inference.
 export type ExplicitRouteResponse<
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- phantom, see above
   TResponse extends RouteResponseSchema | undefined = undefined,
 > = {
   readonly _kind: "explicit_route_response";

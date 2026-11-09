@@ -28,6 +28,7 @@ import type {
 import type { FileConfig, FilesConfig } from "../types/file.js";
 import type { z } from "zod";
 import { mergeRouteConfig } from "../config/routes.js";
+import type { DeepMergeObjects } from "../utils/types.js";
 
 type RouteConfigCapabilities = object;
 
@@ -35,26 +36,6 @@ type MergeRouteSchemaPatch<
   TCurrentSchema extends RouteSchema,
   TSchemaPatch extends Partial<RouteSchema>,
 > = Simplify<Omit<TCurrentSchema, keyof TSchemaPatch> & TSchemaPatch>;
-
-type IsPlainObject<TValue> = TValue extends object
-  ? TValue extends (...args: never[]) => unknown
-    ? false
-    : TValue extends readonly unknown[]
-      ? false
-      : true
-  : false;
-
-type DeepMergeObjects<TBaseObject, TOverrideObject> = Simplify<
-  Omit<TBaseObject, keyof TOverrideObject> & {
-    [TKey in keyof TOverrideObject]: TKey extends keyof TBaseObject
-      ? IsPlainObject<TBaseObject[TKey]> extends true
-        ? IsPlainObject<TOverrideObject[TKey]> extends true
-          ? DeepMergeObjects<TBaseObject[TKey], TOverrideObject[TKey]>
-          : TOverrideObject[TKey]
-        : TOverrideObject[TKey]
-      : TOverrideObject[TKey];
-  }
->;
 
 type ResolveRouteContextForConfig<
   TContextExtensions extends object,

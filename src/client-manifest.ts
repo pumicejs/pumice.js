@@ -3,40 +3,20 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z, toJSONSchema } from "zod";
 import { mergeRouteConfig } from "./config/routes.js";
+import { resolveBodyLimit } from "./http/body-limit.js";
 import type { RouteConfig } from "./types/config.js";
 import type { RouteBeforeValidationHook, RouteMethod } from "./types/route.js";
 import type {
   RouteParamsSchema,
   RouteSchema,
-  RouteThrowDescriptor,
-  RouteThrowsCodeSchemaMap,
   RouteThrowsSchema,
   RouteResponseSchema,
 } from "./types/schema.js";
-
-function isZodSchema(value: unknown): value is z.ZodTypeAny {
-  return typeof value === "object" && value !== null && "safeParse" in value;
-}
-
-function isThrowDescriptor(value: unknown): value is RouteThrowDescriptor {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !isZodSchema(value) &&
-    ("data" in value || "issues" in value || "message" in value)
-  );
-}
-
-function isThrowsCodeSchemaMap(
-  throwsSchema: unknown,
-): throwsSchema is RouteThrowsCodeSchemaMap {
-  return (
-    typeof throwsSchema === "object" &&
-    throwsSchema !== null &&
-    !isZodSchema(throwsSchema) &&
-    !isThrowDescriptor(throwsSchema)
-  );
-}
+import {
+  isThrowDescriptor,
+  isThrowsCodeSchemaMap,
+  isZodSchema,
+} from "./schema/guards.js";
 
 /**
  * Zod `date` / `coerce.date()` cannot be expressed in JSON Schema; with
@@ -334,6 +314,14 @@ export function appendClientManifestRoute(
     defaultRouteConfig,
     definition.config,
   ) as Record<string, unknown>;
+  if (definition.method !== "get") {
+    // The limit that actually applies, including the 1 MiB default and the
+    // raise for declared uploads, so clients and docs can state it.
+    effectiveConfig.bodyLimit = resolveBodyLimit(
+      effectiveConfig,
+      definition.schema,
+    );
+  }
 
   const methodEntry: ClientManifestMethod = {
     descriptor: definition.description,

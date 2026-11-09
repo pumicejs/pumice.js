@@ -25,6 +25,7 @@ export type { RouteMethod, RouteDefinition } from "./types/route.js";
 export type { RouteConfig } from "./types/config.js";
 export type { RouteAuthenticationConfig } from "./types/authentication.js";
 export type { LoggerPluginOptions } from "./plugins/logger.js";
+export type { TrustProxy } from "./utils/client-ip.js";
 export type { ClientGenerationPluginOptions } from "./plugins/client-generation.js";
 export type {
   ClientGenerationRouteConfigExtension,

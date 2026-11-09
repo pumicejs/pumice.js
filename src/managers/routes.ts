@@ -1,5 +1,5 @@
 import { readdir } from "node:fs/promises";
-import { dirname, extname, join, relative } from "node:path";
+import { dirname, extname, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Context, Hono } from "hono";
 import { z } from "zod";
@@ -26,7 +26,10 @@ import {
   validateRouteThrownError,
 } from "../schema/runtime.js";
 import { getStatusMessage } from "../errors/api.js";
+import { enforceBodyLimit, resolveBodyLimit } from "../http/body-limit.js";
 import { resolveDefaultThrowMessage } from "./throw-message.js";
+import { callStackFilePaths } from "../utils/call-site.js";
+import { logInfo } from "../utils/log.js";
 import {
   appendClientManifestRoute,
   finalizeClientManifest,
@@ -206,6 +209,67 @@ function compareRouteFilePaths(filePathA: string, filePathB: string): number {
   return segmentsA.length - segmentsB.length;
 }
 
+/** Where in the pipeline an error was thrown, for the log line and the 500. */
+const PIPELINE_STAGES = {
+  procedure: {
+    label: "ProcedureError",
+    message: "An error occurred in a route procedure.",
+  },
+  handler: {
+    label: "RouteError",
+    message: "An error occurred in the handler.",
+  },
+  middleware: {
+    label: "MiddlewareError",
+    message: "An error occurred in a middleware.",
+  },
+} as const;
+
+/**
+ * Turns anything a procedure, handler or middleware threw into the response.
+ *
+ * A 5xx (including a plain `Error`) is logged with its stack and answered
+ * with a generic 500, so internals never reach the client. A 4xx is checked
+ * against the route's `throws` contract and sent as the error envelope.
+ */
+async function respondToThrown(
+  error: unknown,
+  stage: keyof typeof PIPELINE_STAGES,
+  context: Context,
+  method: string,
+  schema: RouteSchema | undefined,
+): Promise<Response> {
+  const normalizedError = normalizeHandlerThrownError(error);
+
+  if (normalizedError.status >= 500) {
+    const { label, message } = PIPELINE_STAGES[stage];
+    const originalError =
+      error instanceof Error
+        ? { name: error.name, message: error.message, stack: error.stack }
+        : error;
+
+    console.error(
+      `[${label}] ${method} ${context.req.path} -> ${normalizedError.status} ${normalizedError.code ?? "INTERNAL_ERROR"}`,
+      originalError,
+    );
+    return buildApiErrorResponse({
+      status: 500,
+      code: "INTERNAL_ERROR",
+      message,
+    });
+  }
+
+  const throwValidation = await validateRouteThrownError(
+    schema,
+    normalizedError,
+  );
+  if (!throwValidation.ok) {
+    return throwValidation.response;
+  }
+
+  return buildApiErrorResponse(normalizedError);
+}
+
 /**
  * Executes a single procedure's handler, injecting the use-site config, and
  * merges any returned contributions into the accumulated `c.procedures` bag.
@@ -244,6 +308,8 @@ export class RouteManager {
   private readonly basePathSegments: string[];
   private currentRouteFilePath: string | null = null;
   private currentMiddlewareFilePath: string | null = null;
+  /** Every route and middleware file discovery imports, as absolute paths. */
+  private readonly discoveredFilePaths = new Set<string>();
   private defaultRouteConfig: RouteConfig<object> = {};
   /** Middlewares registered during file-system discovery, keyed by directory. */
   private readonly middlewaresByDir = new Map<
@@ -269,7 +335,7 @@ export class RouteManager {
   }
 
   public async registerDiscovered(): Promise<string[]> {
-    const files = await this.walkFiles(this.rootDirPath);
+    const files = await this.walkFiles(resolve(this.rootDirPath));
     const discoverableFiles = files.filter((filePath) =>
       this.isRouteFile(filePath),
     );
@@ -283,6 +349,10 @@ export class RouteManager {
     this.cache.clear();
     this.clientManifestRoutesByPath.clear();
     this.middlewaresByDir.clear();
+    this.discoveredFilePaths.clear();
+    for (const filePath of discoverableFiles) {
+      this.discoveredFilePaths.add(filePath);
+    }
 
     // Middlewares are loaded first so ancestor lookups succeed when route
     // files import and register themselves synchronously below.
@@ -307,19 +377,20 @@ export class RouteManager {
    * Binds the definition to the directory of the current middleware file.
    */
   public addMiddlewareFromCurrentFile(definition: MiddlewareDefinition): void {
-    if (!this.currentMiddlewareFilePath) {
+    const middlewareFilePath = this.resolveRegisteringFile(
+      this.currentMiddlewareFilePath,
+    );
+    if (!middlewareFilePath) {
       throw new Error(
         "server.middleware() can only be called while middleware files are being loaded.",
       );
     }
 
-    const directoryKey = normalizeDirPath(
-      dirname(this.currentMiddlewareFilePath),
-    );
+    const directoryKey = normalizeDirPath(dirname(middlewareFilePath));
     const existing = this.middlewaresByDir.get(directoryKey);
     const enriched: AnyMiddlewareDefinition = {
       ...definition,
-      sourceFilePath: this.currentMiddlewareFilePath,
+      sourceFilePath: middlewareFilePath,
     };
 
     if (existing) {
@@ -328,8 +399,8 @@ export class RouteManager {
       this.middlewaresByDir.set(directoryKey, [enriched]);
     }
 
-    console.log(
-      `Registered middleware from ${relative(this.rootDirPath, this.currentMiddlewareFilePath)}${
+    logInfo(
+      `Registered middleware from ${relative(this.rootDirPath, middlewareFilePath)}${
         definition.description ? ` (${definition.description})` : ""
       }`,
     );
@@ -388,7 +459,7 @@ export class RouteManager {
       definition,
     });
 
-    console.log(`Registered ${definition.method.toUpperCase()} ${routePath}`);
+    logInfo(`Registered ${definition.method.toUpperCase()} ${routePath}`);
 
     return routePath;
   }
@@ -435,6 +506,8 @@ export class RouteManager {
     const sortedHooks = [...(definition.beforeValidationHooks ?? [])].sort(
       (a, b) => (a.order ?? 0) - (b.order ?? 0),
     );
+
+    const method = definition.method.toUpperCase();
 
     const runPostHookPipeline = async (context: Context): Promise<Response> => {
       const requestValidation = await validateRouteRequest(
@@ -534,84 +607,26 @@ export class RouteManager {
           );
         }
       } catch (error) {
-        const normalizedError = normalizeHandlerThrownError(error);
-        const isInternalRuntimeError = normalizedError.status >= 500;
-
-        if (isInternalRuntimeError) {
-          const method = definition.method.toUpperCase();
-          const requestPath = context.req.path;
-          const originalError =
-            error instanceof Error
-              ? {
-                  name: error.name,
-                  message: error.message,
-                  stack: error.stack,
-                }
-              : error;
-
-          console.error(
-            `[ProcedureError] ${method} ${requestPath} -> ${normalizedError.status} ${normalizedError.code ?? "INTERNAL_ERROR"}`,
-            originalError,
-          );
-          return buildApiErrorResponse({
-            status: 500,
-            code: "INTERNAL_ERROR",
-            message: "An error occurred in a route procedure.",
-          });
-        }
-
-        const throwValidation = await validateRouteThrownError(
+        return respondToThrown(
+          error,
+          "procedure",
+          context,
+          method,
           definition.schema,
-          normalizedError,
         );
-
-        if (!throwValidation.ok) {
-          return throwValidation.response;
-        }
-
-        return buildApiErrorResponse(normalizedError);
       }
 
       let handlerResult: unknown;
       try {
         handlerResult = await definition.handle(context as never);
       } catch (error) {
-        const normalizedError = normalizeHandlerThrownError(error);
-        const isInternalRuntimeError = normalizedError.status >= 500;
-
-        if (isInternalRuntimeError) {
-          const method = definition.method.toUpperCase();
-          const requestPath = context.req.path;
-          const originalError =
-            error instanceof Error
-              ? {
-                  name: error.name,
-                  message: error.message,
-                  stack: error.stack,
-                }
-              : error;
-
-          console.error(
-            `[RouteError] ${method} ${requestPath} -> ${normalizedError.status} ${normalizedError.code ?? "INTERNAL_ERROR"}`,
-            originalError,
-          );
-          return buildApiErrorResponse({
-            status: 500,
-            code: "INTERNAL_ERROR",
-            message: "An error occurred in the handler.",
-          });
-        }
-
-        const throwValidation = await validateRouteThrownError(
+        return respondToThrown(
+          error,
+          "handler",
+          context,
+          method,
           definition.schema,
-          normalizedError,
         );
-
-        if (!throwValidation.ok) {
-          return throwValidation.response;
-        }
-
-        return buildApiErrorResponse(normalizedError);
       }
 
       if (handlerResult instanceof Response) {
@@ -625,8 +640,6 @@ export class RouteManager {
         normalizedResult.headers as never,
       );
     };
-
-    const method = definition.method.toUpperCase();
 
     /**
      * Outer handler: runs sorted `beforeValidationHooks` (plugin-contributed
@@ -651,72 +664,54 @@ export class RouteManager {
         }
       }
 
+      // After the hooks, so a rejected (unauthenticated, rate-limited)
+      // request is answered without reading its body at all.
+      const tooLarge = await enforceBodyLimit(
+        context,
+        resolveBodyLimit(effectiveRouteConfig, definition.schema),
+      );
+      if (tooLarge) {
+        return tooLarge;
+      }
+
       if (middlewares.length === 0) {
         return runPostHookPipeline(context);
       }
 
-      let index = 0;
-
-      const next = async (): Promise<Response> => {
+      // Each middleware gets its own `next`, memoized: calling it twice, or
+      // awaiting it without returning its response (the Hono habit), still
+      // runs the rest of the chain exactly once.
+      const dispatch = async (index: number): Promise<Response> => {
         if (index >= middlewares.length) {
           return runPostHookPipeline(context);
         }
-        const current = middlewares[index];
-        index += 1;
+        const current = middlewares[index]!;
+        let downstream: Promise<Response> | undefined;
+        const next = (): Promise<Response> => {
+          downstream ??= dispatch(index + 1);
+          return downstream;
+        };
 
         try {
           const result = await current.handle(context as never, next);
           if (result instanceof Response) {
             return result;
           }
-          // Middleware returned void without calling `next()` — defensively
-          // continue the chain so the route still runs. This matches how most
-          // middleware systems treat a missing `next()` as a bug rather than a
-          // silent drop.
-          if (index <= middlewares.length) {
-            return next();
-          }
-          return runPostHookPipeline(context);
+          // A middleware that returned nothing passes on what `next()` gave it,
+          // or, if it never called `next()`, lets the chain continue once.
+          return await next();
         } catch (error) {
-          const normalizedError = normalizeHandlerThrownError(error);
-          const isInternalRuntimeError = normalizedError.status >= 500;
-
-          if (isInternalRuntimeError) {
-            const requestPath = context.req.path;
-            const originalError =
-              error instanceof Error
-                ? {
-                    name: error.name,
-                    message: error.message,
-                    stack: error.stack,
-                  }
-                : error;
-
-            console.error(
-              `[MiddlewareError] ${method} ${requestPath} -> ${normalizedError.status} ${normalizedError.code ?? "INTERNAL_ERROR"}`,
-              originalError,
-            );
-            return buildApiErrorResponse({
-              status: 500,
-              code: "INTERNAL_ERROR",
-              message: "An error occurred in a middleware.",
-            });
-          }
-
-          const throwValidation = await validateRouteThrownError(
+          return respondToThrown(
+            error,
+            "middleware",
+            context,
+            method,
             definition.schema,
-            normalizedError,
           );
-
-          if (!throwValidation.ok) {
-            return throwValidation.response;
-          }
-
-          return buildApiErrorResponse(normalizedError);
         }
       };
 
-      return next();
+      return dispatch(0);
     };
   }
 
@@ -733,13 +728,35 @@ export class RouteManager {
       TRouteConfigExtensions
     >,
   ): string {
-    if (!this.currentRouteFilePath) {
+    const routeFilePath = this.resolveRegisteringFile(
+      this.currentRouteFilePath,
+    );
+    if (!routeFilePath) {
       throw new Error(
         "server.route() can only be called while route files are being loaded.",
       );
     }
 
-    return this.add(this.currentRouteFilePath, definition);
+    return this.add(routeFilePath, definition);
+  }
+
+  /**
+   * The discovered file that is registering a route or middleware right now:
+   * the innermost one on the call stack, or else the file discovery is
+   * importing. They differ when one route file imports another: the imported
+   * file's top level runs while its importer is still the one being loaded,
+   * and its routes must still get its own path.
+   */
+  private resolveRegisteringFile(fallback: string | null): string | null {
+    if (fallback === null) {
+      return null;
+    }
+    for (const filePath of callStackFilePaths()) {
+      if (this.discoveredFilePaths.has(filePath)) {
+        return filePath;
+      }
+    }
+    return fallback;
   }
 
   private isRouteFile(filePath: string): boolean {
