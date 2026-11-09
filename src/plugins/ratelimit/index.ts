@@ -117,9 +117,9 @@ async function resolveDynamic(
   return typeof value === "function" ? value(context) : value;
 }
 
-function normalizeRouteConfig(
-  raw: RouteRatelimitConfig | undefined,
-): { rules: RatelimitRule[] } {
+function normalizeRouteConfig(raw: RouteRatelimitConfig | undefined): {
+  rules: RatelimitRule[];
+} {
   if (!raw) return { rules: [] };
   if ("rules" in raw && Array.isArray(raw.rules)) {
     if (raw.disabled) return { rules: [] };
@@ -253,7 +253,8 @@ function pickMostRestrictive(states: RatelimitState[]): RatelimitState {
     const candidate = states[i]!;
     if (
       candidate.remaining < best.remaining ||
-      (candidate.remaining === best.remaining && candidate.resetAt < best.resetAt)
+      (candidate.remaining === best.remaining &&
+        candidate.resetAt < best.resetAt)
     ) {
       best = candidate;
     }
@@ -331,8 +332,7 @@ function buildHelpers(runtimes: RuleRuntime[]): RatelimitingRuleHelpers {
       if (runtimes.length === 0) return NOOP_CONSUME_RESULT;
       const states: RatelimitState[] = [];
       let firstRejection:
-        | { state: RatelimitState; retryAfterMs: number }
-        | undefined;
+        { state: RatelimitState; retryAfterMs: number } | undefined;
 
       for (const runtime of runtimes) {
         const evaluation = await evaluateRule(runtime, {
@@ -567,7 +567,10 @@ export function RatelimitPlugin(
                       response.headers.set(
                         "Retry-After",
                         String(
-                          Math.max(1, Math.ceil(evaluation.retryAfterMs / 1000)),
+                          Math.max(
+                            1,
+                            Math.ceil(evaluation.retryAfterMs / 1000),
+                          ),
                         ),
                       );
                     }

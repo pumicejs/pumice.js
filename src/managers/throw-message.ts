@@ -61,8 +61,7 @@ export function resolveDefaultThrowMessage(
   }
 
   const codeSchema = (statusSchema as RouteThrowsCodeSchemaMap)[code] as
-    | RouteThrowSchema
-    | undefined;
+    RouteThrowSchema | undefined;
 
   return getDescriptorMessage(codeSchema);
 }

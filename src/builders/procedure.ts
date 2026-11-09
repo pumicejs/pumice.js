@@ -184,15 +184,13 @@ export class ProcedureBuilder<
   TBaseContext extends object = {},
   TContextRefinementRules extends ContextRefinementRule = never,
   TDefaultRouteConfig extends object = {},
-> implements
-    ProcedureBuilderStage<
-      TConfig,
-      TParamsSchema,
-      TBaseContext,
-      TContextRefinementRules,
-      TDefaultRouteConfig
-    >
-{
+> implements ProcedureBuilderStage<
+  TConfig,
+  TParamsSchema,
+  TBaseContext,
+  TContextRefinementRules,
+  TDefaultRouteConfig
+> {
   private paramsSchema: ProcedureParamsSchema | undefined = undefined;
 
   public config<TNextConfig extends object>(): ProcedureBuilderStage<
@@ -263,9 +261,10 @@ export class ProcedureBuilder<
         handler: handler as unknown as RouteProcedureHandler<
           TConfig,
           TParamsSchema,
-          (Awaited<TContributions> extends object
-            ? Awaited<TContributions>
-            : {}) | void,
+          | (Awaited<TContributions> extends object
+              ? Awaited<TContributions>
+              : {})
+          | void,
           TBaseContext,
           TContextRefinementRules,
           TDefaultRouteConfig

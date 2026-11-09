@@ -5,7 +5,9 @@ type Simplify<T> = { [TKey in keyof T]: T[TKey] } & {};
  *
  * Plugins can extend this shape through `ServerBuilder.use(...)`.
  */
-export type RouteConfig<TExtensions extends object = {}> = Partial<Simplify<TExtensions>>;
+export type RouteConfig<TExtensions extends object = {}> = Partial<
+  Simplify<TExtensions>
+>;
 
 /**
  * Server-wide defaults.

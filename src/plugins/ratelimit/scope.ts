@@ -13,7 +13,9 @@ export type ScopeResolverOptions = {
    * Returns the user ID for a given request. Used by the `"user"`
    * scope part. Defaults to reading `c.auth?.data?.user?.id`.
    */
-  userId?: (context: Context) => string | undefined | Promise<string | undefined>;
+  userId?: (
+    context: Context,
+  ) => string | undefined | Promise<string | undefined>;
   /** Custom client-IP resolver. Defaults to header-based detection. */
   clientIp?: (context: Context) => string | undefined;
 };
@@ -47,7 +49,9 @@ export function defaultClientIp(context: Context): string {
  * Default user ID extractor: reads `c.auth?.data?.user?.id` if present.
  */
 export function defaultUserId(context: Context): string | undefined {
-  const auth = (context as unknown as { auth?: { data?: { user?: { id?: unknown } } } }).auth;
+  const auth = (
+    context as unknown as { auth?: { data?: { user?: { id?: unknown } } } }
+  ).auth;
   const id = auth?.data?.user?.id;
   if (id === undefined || id === null) return undefined;
   return String(id);

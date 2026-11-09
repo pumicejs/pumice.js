@@ -51,14 +51,19 @@ export type ClientGenerationPluginOptions = {
   ) => ClientManifestGenerationAccess | Promise<ClientManifestGenerationAccess>;
 };
 
-function filterManifestByExposeClient(manifest: ClientManifest): ClientManifest {
+function filterManifestByExposeClient(
+  manifest: ClientManifest,
+): ClientManifest {
   const routes: ClientManifestRoute[] = [];
 
   for (const route of manifest.routes) {
     const methods: Partial<Record<RouteMethod, ClientManifestMethod>> = {};
     for (const method of CLIENT_MANIFEST_METHOD_ORDER) {
       const entry = route.methods[method];
-      if (entry !== undefined && entry.effectiveConfig["exposeClient"] !== false) {
+      if (
+        entry !== undefined &&
+        entry.effectiveConfig["exposeClient"] !== false
+      ) {
         methods[method] = entry;
       }
     }

@@ -137,7 +137,10 @@ function serializeResponse(response: RouteResponseSchema): unknown {
     if (isZodVoidSchema(response)) {
       return { shape: "single", type: "void" };
     }
-    return { shape: "single", jsonSchema: zodToSerializableJsonSchema(response) };
+    return {
+      shape: "single",
+      jsonSchema: zodToSerializableJsonSchema(response),
+    };
   }
 
   const statuses: Record<string, unknown> = {};
@@ -197,7 +200,9 @@ function serializeRouteSchema(schema: RouteSchema | undefined): unknown {
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
-function serializeRouteParams(paramsSchema: RouteParamsSchema | undefined): unknown {
+function serializeRouteParams(
+  paramsSchema: RouteParamsSchema | undefined,
+): unknown {
   if (!paramsSchema || !isZodSchema(paramsSchema)) {
     return undefined;
   }
@@ -369,7 +374,9 @@ export type FinalizeClientManifestOptions = {
   listeningSince?: string;
 };
 
-function buildManifestMeta(options: FinalizeClientManifestOptions): ClientManifestMeta {
+function buildManifestMeta(
+  options: FinalizeClientManifestOptions,
+): ClientManifestMeta {
   return {
     generatedAt: new Date().toISOString(),
     listeningSince: options.listeningSince,

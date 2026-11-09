@@ -86,7 +86,9 @@ export class LoggerPlugin implements ServerPlugin {
       const clientIp = getClientIp(context) ?? "unknown";
 
       if (shouldLogStart) {
-        logger.info(`[REQUEST] ${method} ${path} ip=${clientIp} ua="${userAgent}"`);
+        logger.info(
+          `[REQUEST] ${method} ${path} ip=${clientIp} ua="${userAgent}"`,
+        );
       }
 
       try {
@@ -105,7 +107,8 @@ export class LoggerPlugin implements ServerPlugin {
 
       const durationMs = Date.now() - startTime;
       const status = context.res.status;
-      const contentLength = context.res.headers.get("content-length") ?? "unknown";
+      const contentLength =
+        context.res.headers.get("content-length") ?? "unknown";
       logger.info(
         `[RESPONSE] ${method} ${path} status=${status} duration_ms=${durationMs} content_length=${contentLength}`,
       );

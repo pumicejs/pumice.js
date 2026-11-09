@@ -16,7 +16,9 @@ function toRouteSegment(segment: string): string {
  * NOT contribute a segment to the URL path.
  */
 function isGroupSegment(segment: string): boolean {
-  return segment.length >= 2 && segment.startsWith("(") && segment.endsWith(")");
+  return (
+    segment.length >= 2 && segment.startsWith("(") && segment.endsWith(")")
+  );
 }
 
 function normalizeBasePath(basePath: string): string[] {

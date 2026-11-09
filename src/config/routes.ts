@@ -9,10 +9,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   );
 }
 
-function mergeDefined(
-  baseValue: unknown,
-  overrideValue: unknown,
-): unknown {
+function mergeDefined(baseValue: unknown, overrideValue: unknown): unknown {
   if (overrideValue === undefined) {
     return baseValue;
   }
@@ -40,5 +37,8 @@ export function mergeRouteConfig<TExtensions extends object>(
   baseConfig: RouteConfig<TExtensions> | undefined,
   overrideConfig: RouteConfig<TExtensions> | undefined,
 ): RouteConfig<TExtensions> {
-  return mergeDefined(baseConfig ?? {}, overrideConfig ?? {}) as RouteConfig<TExtensions>;
+  return mergeDefined(
+    baseConfig ?? {},
+    overrideConfig ?? {},
+  ) as RouteConfig<TExtensions>;
 }

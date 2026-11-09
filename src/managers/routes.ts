@@ -118,8 +118,7 @@ function isDynamicSegment(segment: string): boolean {
  * `middleware.{ts,js,...}` or any `*.mw.{ts,js,...}`.
  */
 function isMiddlewareFile(filePath: string): boolean {
-  const fileName =
-    filePath.replaceAll("\\", "/").split("/").at(-1) ?? filePath;
+  const fileName = filePath.replaceAll("\\", "/").split("/").at(-1) ?? filePath;
   const extension = extname(fileName);
 
   if (!SUPPORTED_EXTENSIONS.has(extension as SupportedExtension)) {
@@ -307,9 +306,7 @@ export class RouteManager {
    * Called by the middleware builder during middleware-file discovery.
    * Binds the definition to the directory of the current middleware file.
    */
-  public addMiddlewareFromCurrentFile(
-    definition: MiddlewareDefinition,
-  ): void {
+  public addMiddlewareFromCurrentFile(definition: MiddlewareDefinition): void {
     if (!this.currentMiddlewareFilePath) {
       throw new Error(
         "server.middleware() can only be called while middleware files are being loaded.",
@@ -439,9 +436,7 @@ export class RouteManager {
       (a, b) => (a.order ?? 0) - (b.order ?? 0),
     );
 
-    const runPostHookPipeline = async (
-      context: Context,
-    ): Promise<Response> => {
+    const runPostHookPipeline = async (context: Context): Promise<Response> => {
       const requestValidation = await validateRouteRequest(
         context,
         definition.schema,
@@ -452,7 +447,8 @@ export class RouteManager {
         return requestValidation.response;
       }
 
-      (context as unknown as { body: unknown }).body = requestValidation.data.body;
+      (context as unknown as { body: unknown }).body =
+        requestValidation.data.body;
       (context as unknown as { query: unknown }).query =
         requestValidation.data.query;
       (context as unknown as { headers: unknown }).headers =
@@ -490,19 +486,18 @@ export class RouteManager {
         return originalJson(payload as never, status as never);
       }) as typeof context.json;
 
-      (context as unknown as { returns: unknown }).returns = ((payload: unknown) =>
-        payload) as unknown;
+      (context as unknown as { returns: unknown }).returns = ((
+        payload: unknown,
+      ) => payload) as unknown;
 
-      (context as unknown as { response: unknown }).response = ((
-        response: {
-          status: number;
-          data: unknown;
-          code?: string;
-          message?: string;
-          issues?: unknown[];
-          headers?: Record<string, string>;
-        },
-      ) =>
+      (context as unknown as { response: unknown }).response = ((response: {
+        status: number;
+        data: unknown;
+        code?: string;
+        message?: string;
+        issues?: unknown[];
+        headers?: Record<string, string>;
+      }) =>
         createExplicitRouteResponse({
           ...response,
           issues: response.issues as never,
@@ -526,12 +521,17 @@ export class RouteManager {
       }) as unknown;
 
       const procedureContributions: Record<string, unknown> = {};
-      (context as unknown as { procedures: Record<string, unknown> }).procedures =
-        procedureContributions;
+      (
+        context as unknown as { procedures: Record<string, unknown> }
+      ).procedures = procedureContributions;
 
       try {
         for (const applied of activeProcedures) {
-          await runProcedure(context, applied.procedure, procedureContributions);
+          await runProcedure(
+            context,
+            applied.procedure,
+            procedureContributions,
+          );
         }
       } catch (error) {
         const normalizedError = normalizeHandlerThrownError(error);

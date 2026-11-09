@@ -110,7 +110,9 @@ export class Server<
    * The route pipeline is wired immediately, but no files are loaded and no
    * port is bound until {@link Server.listen} is called.
    */
-  public constructor(options: ServerConstructOptions<TRouteConfigExtensions> = {}) {
+  public constructor(
+    options: ServerConstructOptions<TRouteConfigExtensions> = {},
+  ) {
     const basePath = options.basePath ?? "routes";
     const rootDir = options.rootDir ?? resolve(process.cwd(), "src");
     this.configState = options.config ?? {};

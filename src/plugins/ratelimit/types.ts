@@ -11,8 +11,7 @@ import type { Context } from "hono";
  * ```
  */
 export type RatelimitDynamicNumber =
-  | number
-  | ((context: Context) => number | Promise<number>);
+  number | ((context: Context) => number | Promise<number>);
 
 /**
  * High-level descriptor of which callers share the same bucket.

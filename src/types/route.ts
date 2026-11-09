@@ -15,13 +15,7 @@ type InferParamsValue<TParamsSchema extends RouteParamsSchema | undefined> =
   TParamsSchema extends z.ZodTypeAny ? z.infer<TParamsSchema> : unknown;
 
 export type RouteMethod =
-  | "any"
-  | "get"
-  | "post"
-  | "put"
-  | "patch"
-  | "delete"
-  | "options";
+  "any" | "get" | "post" | "put" | "patch" | "delete" | "options";
 
 type RouteImplicitReturnPayload<TSchema extends RouteSchema> = [
   TSchema["response"],
