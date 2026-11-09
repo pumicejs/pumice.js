@@ -139,8 +139,7 @@ function matchesGroup(
   const prefixes = normalizeStringList(match.pathPrefix);
   if (prefixes && prefixes.length > 0) {
     const hit = prefixes.some(
-      (prefix) =>
-        routePath === prefix || routePath.startsWith(`${prefix}/`),
+      (prefix) => routePath === prefix || routePath.startsWith(`${prefix}/`),
     );
     if (!hit) {
       return false;
@@ -180,10 +179,12 @@ function extractDocsMetadata(
   return raw as DocsRouteMetadata;
 }
 
-function deriveAutoGroupFromPath(routePath: string): {
-  name: string;
-  label: string;
-} | undefined {
+function deriveAutoGroupFromPath(routePath: string):
+  | {
+      name: string;
+      label: string;
+    }
+  | undefined {
   const trimmed = routePath.replace(/^\/+/, "");
   if (trimmed.length === 0) {
     return undefined;
@@ -224,19 +225,17 @@ function resolveTags(
   return resolved;
 }
 
-function resolveGroupAssignment(
-  options: {
-    routePath: string;
-    method: RouteMethod;
-    tags: string[];
-    metadata: DocsRouteMetadata | undefined;
-    groupsByName: Map<string, ResolvedGroup>;
-    orderedGroups: ResolvedGroup[];
-    autoGroups: Map<string, DocsGroupDefinition>;
-    defaultGroup: DocsGroupDefinition | undefined;
-    onUnknownGroup: DocsUnknownReferenceStrategy | undefined;
-  },
-): DocsGroupDefinition | undefined {
+function resolveGroupAssignment(options: {
+  routePath: string;
+  method: RouteMethod;
+  tags: string[];
+  metadata: DocsRouteMetadata | undefined;
+  groupsByName: Map<string, ResolvedGroup>;
+  orderedGroups: ResolvedGroup[];
+  autoGroups: Map<string, DocsGroupDefinition>;
+  defaultGroup: DocsGroupDefinition | undefined;
+  onUnknownGroup: DocsUnknownReferenceStrategy | undefined;
+}): DocsGroupDefinition | undefined {
   const {
     routePath,
     method,
@@ -284,9 +283,7 @@ function resolveGroupAssignment(
   return defaultGroup;
 }
 
-function sortGroupDefinitions(
-  groups: ResolvedGroup[],
-): ResolvedGroup[] {
+function sortGroupDefinitions(groups: ResolvedGroup[]): ResolvedGroup[] {
   return [...groups].sort((a, b) => {
     const orderA = a.definition.order ?? 0;
     const orderB = b.definition.order ?? 0;
@@ -326,7 +323,9 @@ function toManifestTag(tag: DocsTagDefinition): DocsManifestTag {
   };
 }
 
-function emptyManifestGroup(definition: DocsGroupDefinition): DocsManifestGroup {
+function emptyManifestGroup(
+  definition: DocsGroupDefinition,
+): DocsManifestGroup {
   return {
     name: definition.name,
     label: definition.label ?? definition.name,
@@ -339,16 +338,14 @@ function emptyManifestGroup(definition: DocsGroupDefinition): DocsManifestGroup 
   };
 }
 
-function buildGroupTree(
-  options: {
-    rootGroups: DocsGroupDefinition[];
-    routesByGroup: Map<string, DocsManifestRoute[]>;
-    groupsByName: Map<string, ResolvedGroup>;
-    autoGroups: Map<string, DocsGroupDefinition>;
-    defaultGroup: DocsGroupDefinition | undefined;
-    onUnknownGroup: DocsUnknownReferenceStrategy | undefined;
-  },
-): DocsManifestGroup[] {
+function buildGroupTree(options: {
+  rootGroups: DocsGroupDefinition[];
+  routesByGroup: Map<string, DocsManifestRoute[]>;
+  groupsByName: Map<string, ResolvedGroup>;
+  autoGroups: Map<string, DocsGroupDefinition>;
+  defaultGroup: DocsGroupDefinition | undefined;
+  onUnknownGroup: DocsUnknownReferenceStrategy | undefined;
+}): DocsManifestGroup[] {
   const {
     rootGroups,
     routesByGroup,
@@ -400,7 +397,10 @@ function buildGroupTree(
     registerGroupDefinition(defaultGroup);
   }
 
-  function build(resolved: ResolvedGroup, visiting: Set<string>): DocsManifestGroup {
+  function build(
+    resolved: ResolvedGroup,
+    visiting: Set<string>,
+  ): DocsManifestGroup {
     const node = emptyManifestGroup(resolved.definition);
     const routes = routesByGroup.get(resolved.definition.name);
     if (routes && routes.length > 0) {
@@ -446,7 +446,10 @@ function buildDocsManifest(
       );
       continue;
     }
-    groupsByName.set(group.name, { definition: group, declaredAt: declarationIndex++ });
+    groupsByName.set(group.name, {
+      definition: group,
+      declaredAt: declarationIndex++,
+    });
     declaredGroups.push(group);
   }
   const orderedGroups = sortGroupDefinitions([...groupsByName.values()]);
@@ -494,7 +497,13 @@ function buildDocsManifest(
         onUnknownGroup: options.onUnknownGroup,
       });
 
-      const manifestRoute = buildManifestRoute(route, method, entry, metadata, tags);
+      const manifestRoute = buildManifestRoute(
+        route,
+        method,
+        entry,
+        metadata,
+        tags,
+      );
 
       if (group === undefined) {
         ungrouped.push(manifestRoute);
@@ -525,7 +534,9 @@ function buildDocsManifest(
     });
   }
 
-  const manifestTags: DocsManifestTag[] = (options.tags ?? []).map(toManifestTag);
+  const manifestTags: DocsManifestTag[] = (options.tags ?? []).map(
+    toManifestTag,
+  );
 
   return {
     version: 1,
@@ -622,7 +633,8 @@ export function DocsPlugin(
             return createApiJsonErrorResponse(status, {
               code: access.code ?? "FORBIDDEN",
               message:
-                access.message ?? "You are not allowed to access the docs manifest.",
+                access.message ??
+                "You are not allowed to access the docs manifest.",
             });
           }
         }

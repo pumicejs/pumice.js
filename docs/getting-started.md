@@ -5,8 +5,7 @@ serving validated requests. By the end you'll have:
 
 - A shared `server` instance
 - One route file under `src/routes/...`
-- A request/response cycle that's validated against a Zod schema and
-  type-safe end to end
+- A request validated against a Zod schema, and a response typed end to end
 
 For deeper dives into each concept once you're up and running, follow the
 links at the bottom of this page.
@@ -16,11 +15,11 @@ links at the bottom of this page.
 ## 1. Install
 
 ```bash
-npm install pumice.js zod
+npm install pumice.js zod hono
 ```
 
-`pumice.js` re-exports `z` from Zod so you don't normally need to import
-Zod directly.
+`zod` and `hono` are peer dependencies; Node.js 22 or later. `pumice.js`
+re-exports `z` from Zod so you don't normally need to import Zod directly.
 
 ### `package.json` essentials
 
@@ -144,7 +143,7 @@ server
     .handle(async (c) => {
       const user = await db.users.find(c.params.id);
       if (!user) throw 404;
-      return user; // validated against UserSchema, wrapped in the success envelope
+      return user; // typed by UserSchema (not checked at runtime), wrapped in the success envelope
     });
 ```
 

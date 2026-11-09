@@ -14,8 +14,19 @@
   "files": [
     "dist"
   ],
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "build": "tsc -p .",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "fixtures:contract": "UPDATE_CONTRACT_FIXTURES=1 vitest run test/contract.test.ts",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build",
     "prepublishOnly": "npm run build"
   },
   "repository": {
@@ -41,12 +52,21 @@
   "author": "Filip Podstawski <filip@surdic.de>",
   "license": "ISC",
   "dependencies": {
-    "@hono/node-server": "^1.19.14",
-    "hono": "^4.12.14",
+    "@hono/node-server": "^2.1.5"
+  },
+  "peerDependencies": {
+    "hono": "^4.13.14",
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@types/node": "^25.6.0",
-    "typescript": "^6.0.2"
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.20.5",
+    "eslint": "^10.13.0",
+    "hono": "^4.13.14",
+    "prettier": "^3.9.10",
+    "typescript": "^6.0.2",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.0.5",
+    "zod": "^4.3.6"
   }
 }

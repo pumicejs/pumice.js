@@ -50,7 +50,8 @@ export const fixedWindowAlgorithm: RatelimitAlgorithm = {
       previous && now - previous.windowStart < timeframeMs
         ? previous.windowStart
         : now;
-    const currentCount = previous && previous.windowStart === windowStart ? previous.count : 0;
+    const currentCount =
+      previous && previous.windowStart === windowStart ? previous.count : 0;
     const projectedCount = currentCount + cost;
     const allowed = projectedCount <= limit;
 
@@ -109,13 +110,12 @@ export const slidingWindowAlgorithm: RatelimitAlgorithm = {
     const projected = weightedCount + cost;
     const allowed = projected <= limit;
 
-    const finalCurrent = allowed && consume ? currentCount + cost : currentCount;
+    const finalCurrent =
+      allowed && consume ? currentCount + cost : currentCount;
     const resetAt = currentWindowStart + timeframeMs * 2;
 
     const tokensAvailableAt =
-      allowed || previousCount === 0
-        ? now
-        : currentWindowStart + timeframeMs;
+      allowed || previousCount === 0 ? now : currentWindowStart + timeframeMs;
 
     return {
       allowed,
@@ -154,12 +154,17 @@ export const tokenBucketAlgorithm: RatelimitAlgorithm = {
     const previousTokens = stored?.tokens ?? capacity;
 
     const elapsed = Math.max(0, now - lastRefillAt);
-    const refilled = Math.min(capacity, previousTokens + elapsed * refillRatePerMs);
+    const refilled = Math.min(
+      capacity,
+      previousTokens + elapsed * refillRatePerMs,
+    );
 
     const allowed = refilled >= cost;
     const tokensAfter = allowed && consume ? refilled - cost : refilled;
     const tokensNeeded = allowed ? 0 : cost - refilled;
-    const retryAfterMs = allowed ? 0 : Math.ceil(tokensNeeded / refillRatePerMs);
+    const retryAfterMs = allowed
+      ? 0
+      : Math.ceil(tokensNeeded / refillRatePerMs);
 
     // Reset (full bucket) reached when we go from `tokensAfter` to capacity.
     const msToFull = (capacity - tokensAfter) / refillRatePerMs;

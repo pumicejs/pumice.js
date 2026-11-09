@@ -87,6 +87,9 @@ export type ServerPluginContext = {
  * @typeParam TRouteConfigExtensions Keys the plugin adds to per-route config (e.g. `{ authentication: { required?: boolean } }`).
  * @typeParam TContextRefinementRules Conditional refinements applied to context types when the effective config matches a `when` predicate.
  */
+// The three parameters are phantom: the body never reads them, but `Server.use`
+// infers them from the alias's type arguments to widen the server's types.
+/* eslint-disable @typescript-eslint/no-unused-vars -- phantom parameters, see above */
 export type ServerPlugin<
   TContext extends object = {},
   TRouteConfigExtensions extends object = {},
@@ -119,3 +122,4 @@ export type ServerPlugin<
    */
   unique?: boolean;
 };
+/* eslint-enable @typescript-eslint/no-unused-vars */

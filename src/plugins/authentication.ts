@@ -19,10 +19,7 @@ import { createApiJsonErrorResponse } from "../http/json-envelope.js";
  * @typeParam TField Name of the field where the auth state will be exposed on the route context (e.g. `"auth"` → `c.auth`).
  * @typeParam TData Shape of the authenticated user payload (e.g. `{ user: { id: string } }`).
  */
-export type AuthenticationPluginOptions<
-  TField extends string,
-  TData,
-> = {
+export type AuthenticationPluginOptions<TField extends string, TData> = {
   /**
    * Context field name where auth state will be injected.
    *
@@ -135,12 +132,16 @@ export function AuthenticationPlugin<
             {
               order: -1000,
               run: async (context, routeConfig) => {
-                const authState = await options.authenticator(context as Context);
-                (context as unknown as Record<string, unknown>)[field] = authState;
+                const authState = await options.authenticator(
+                  context as Context,
+                );
+                (context as unknown as Record<string, unknown>)[field] =
+                  authState;
 
                 if (
                   isAuthenticationRequired(
-                    routeConfig as AuthenticationRouteConfigExtension | undefined,
+                    routeConfig as
+                      AuthenticationRouteConfigExtension | undefined,
                   ) &&
                   !authState.authenticated
                 ) {
@@ -158,10 +159,9 @@ export function AuthenticationPlugin<
   };
 }
 
-export type InferAuthenticationContext<
-  TField extends string,
-  TData,
-> = Simplify<Record<TField, AuthState<TData>>>;
+export type InferAuthenticationContext<TField extends string, TData> = Simplify<
+  Record<TField, AuthState<TData>>
+>;
 
 export type AuthenticationHandlerContext<TData> = {
   context: Context;

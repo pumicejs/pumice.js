@@ -28,6 +28,7 @@ import type {
 import type { FileConfig, FilesConfig } from "../types/file.js";
 import type { z } from "zod";
 import { mergeRouteConfig } from "../config/routes.js";
+import type { DeepMergeObjects } from "../utils/types.js";
 
 type RouteConfigCapabilities = object;
 
@@ -35,26 +36,6 @@ type MergeRouteSchemaPatch<
   TCurrentSchema extends RouteSchema,
   TSchemaPatch extends Partial<RouteSchema>,
 > = Simplify<Omit<TCurrentSchema, keyof TSchemaPatch> & TSchemaPatch>;
-
-type IsPlainObject<TValue> = TValue extends object
-  ? TValue extends (...args: never[]) => unknown
-    ? false
-    : TValue extends readonly unknown[]
-      ? false
-      : true
-  : false;
-
-type DeepMergeObjects<TBaseObject, TOverrideObject> = Simplify<
-  Omit<TBaseObject, keyof TOverrideObject> & {
-    [TKey in keyof TOverrideObject]: TKey extends keyof TBaseObject
-      ? IsPlainObject<TBaseObject[TKey]> extends true
-        ? IsPlainObject<TOverrideObject[TKey]> extends true
-          ? DeepMergeObjects<TBaseObject[TKey], TOverrideObject[TKey]>
-          : TOverrideObject[TKey]
-        : TOverrideObject[TKey]
-      : TOverrideObject[TKey];
-  }
->;
 
 type ResolveRouteContextForConfig<
   TContextExtensions extends object,
@@ -220,7 +201,9 @@ export interface RouteBuilderMethodStage<
    *
    * @example `.describe("Get a user by id")`
    */
-  describe(description: string): RouteBuilderMethodStage<
+  describe(
+    description: string,
+  ): RouteBuilderMethodStage<
     TSchema,
     TMethod,
     TParamsSchema,
@@ -1102,7 +1085,11 @@ export class RouteBuilder<
     TEffectiveConfig
   > {
     this.assertPendingMethod("schema");
-    if (this.pendingMethod === "get" && "body" in schema && schema.body !== undefined) {
+    if (
+      this.pendingMethod === "get" &&
+      "body" in schema &&
+      schema.body !== undefined
+    ) {
       throw new Error("GET routes cannot define a request body schema.");
     }
     if (
@@ -1532,14 +1519,20 @@ export class RouteBuilder<
 
     this.register({
       method: this.pendingMethod,
-      handle: handler as unknown as RouteHandler<RouteSchema, RouteParamsSchema>,
+      handle: handler as unknown as RouteHandler<
+        RouteSchema,
+        RouteParamsSchema
+      >,
       params: this.defaultParamsSchema as TMethodParamsSchema,
       description: this.pendingDescription ?? undefined,
       schema:
         this.pendingSchema && Object.keys(this.pendingSchema).length > 0
           ? this.pendingSchema
           : undefined,
-      config: mergeRouteConfig<TFeatures>(this.defaultConfig, this.pendingConfig ?? {}),
+      config: mergeRouteConfig<TFeatures>(
+        this.defaultConfig,
+        this.pendingConfig ?? {},
+      ),
       procedures:
         this.appliedProcedures.length > 0
           ? [...this.appliedProcedures]
@@ -1645,12 +1638,18 @@ export class RouteBuilder<
     ) {
       throw new Error("GET routes cannot accept file uploads.");
     }
-    if (schemaPatch.file !== undefined && this.pendingSchema?.files !== undefined) {
+    if (
+      schemaPatch.file !== undefined &&
+      this.pendingSchema?.files !== undefined
+    ) {
       throw new Error(
         "Cannot combine .file(...) and .files(...) on the same route — choose one.",
       );
     }
-    if (schemaPatch.files !== undefined && this.pendingSchema?.file !== undefined) {
+    if (
+      schemaPatch.files !== undefined &&
+      this.pendingSchema?.file !== undefined
+    ) {
       throw new Error(
         "Cannot combine .file(...) and .files(...) on the same route — choose one.",
       );

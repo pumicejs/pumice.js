@@ -1,7 +1,4 @@
-import type {
-  RatelimitStateRecord,
-  RatelimitStore,
-} from "./types.js";
+import type { RatelimitStateRecord, RatelimitStore } from "./types.js";
 
 /**
  * In-process ratelimit store backed by a `Map`.

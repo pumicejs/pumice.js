@@ -2,10 +2,8 @@ import type { Context } from "hono";
 import { toJSONSchema, type z } from "zod";
 import type {
   ExplicitRouteResponse,
-  RouteThrowDescriptor,
   RouteThrowSchema,
   RouteThrowsCodeSchemaMap,
-  RouteThrowsSchema,
   RouteResponseSchema,
   RouteParamsSchema,
   RouteSchema,
@@ -26,6 +24,7 @@ import {
   buildApiJsonSuccessBody,
   createApiJsonErrorResponse,
 } from "../http/json-envelope.js";
+import { isThrowsCodeSchemaMap, isZodSchema } from "./guards.js";
 
 type RequestValidationSuccess = {
   ok: true;
@@ -389,6 +388,7 @@ async function readRequestBody(
       `Malformed JSON body${
         error instanceof Error ? `: ${error.message}` : ""
       }`,
+      { cause: error },
     );
   }
 }
@@ -415,6 +415,7 @@ async function extractMultipart(
       `Malformed multipart/form-data body${
         error instanceof Error ? `: ${error.message}` : ""
       }`,
+      { cause: error },
     );
   }
 
@@ -545,28 +546,6 @@ async function extractMultipart(
   }
 
   return { body, file: extractedFile, files: extractedFiles, issues };
-}
-
-function isZodSchema(value: unknown): value is z.ZodTypeAny {
-  return typeof value === "object" && value !== null && "safeParse" in value;
-}
-
-function isThrowDescriptor(value: unknown): value is RouteThrowDescriptor {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !isZodSchema(value) &&
-    ("data" in value || "issues" in value || "message" in value)
-  );
-}
-
-function isThrowsCodeSchemaMap(throwsSchema: unknown): throwsSchema is RouteThrowsCodeSchemaMap {
-  return (
-    typeof throwsSchema === "object" &&
-    throwsSchema !== null &&
-    !isZodSchema(throwsSchema) &&
-    !isThrowDescriptor(throwsSchema)
-  );
 }
 
 function isClientErrorStatus(status: number): boolean {
@@ -837,8 +816,8 @@ export async function validateRouteRequest(
         const firstIssue = bodyResult.error.issues.at(0);
         const looksLikeObjectJsonText =
           typeof parsedRequestBody === "string" &&
-          (rawRequestBody.trim().startsWith("\"{") ||
-            rawRequestBody.trim().startsWith("\"["));
+          (rawRequestBody.trim().startsWith('"{') ||
+            rawRequestBody.trim().startsWith('"['));
 
         if (
           looksLikeObjectJsonText &&
@@ -953,7 +932,9 @@ export async function validateRouteThrownError(
         "Throw status validation failed.",
         {
           status: error.status,
-          allowedStatuses: Object.keys(throwsSchema).map((value) => Number(value)),
+          allowedStatuses: Object.keys(throwsSchema).map((value) =>
+            Number(value),
+          ),
         },
       ),
     };
@@ -998,9 +979,7 @@ export async function validateRouteThrownError(
   return validateThrownEntryPayload(statusSchema, error);
 }
 
-export function normalizeHandlerSuccessResult(
-  result: unknown,
-): {
+export function normalizeHandlerSuccessResult(result: unknown): {
   payload: unknown;
   responseBody: unknown;
   status: number;
@@ -1022,7 +1001,9 @@ export function normalizeHandlerSuccessResult(
   };
 }
 
-export function normalizeHandlerThrownError(error: unknown): NormalizedRouteError {
+export function normalizeHandlerThrownError(
+  error: unknown,
+): NormalizedRouteError {
   return normalizeApiError(error);
 }
 

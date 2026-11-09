@@ -5,26 +5,7 @@ import type { ServerConstructOptions } from "../types/server.js";
 import { mergeRouteConfig } from "../config/routes.js";
 import type { RouteConfig, ServerConfig } from "../types/config.js";
 import type { Simplify } from "../types/schema.js";
-
-type IsPlainObject<TValue> = TValue extends object
-  ? TValue extends (...args: never[]) => unknown
-    ? false
-    : TValue extends readonly unknown[]
-      ? false
-      : true
-  : false;
-
-type DeepMergeObjects<TBaseObject, TOverrideObject> = Simplify<
-  Omit<TBaseObject, keyof TOverrideObject> & {
-    [TKey in keyof TOverrideObject]: TKey extends keyof TBaseObject
-      ? IsPlainObject<TBaseObject[TKey]> extends true
-        ? IsPlainObject<TOverrideObject[TKey]> extends true
-          ? DeepMergeObjects<TBaseObject[TKey], TOverrideObject[TKey]>
-          : TOverrideObject[TKey]
-        : TOverrideObject[TKey]
-      : TOverrideObject[TKey];
-  }
->;
+import type { DeepMergeObjects } from "../utils/types.js";
 
 /**
  * Fluent builder for a {@link Server}.

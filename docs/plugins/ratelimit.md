@@ -45,7 +45,8 @@ per matched route pattern**. Override per route with
 |---|---|---|---|
 | `store` | `RatelimitStore` | `new InMemoryRatelimitStore()` | Persistence layer; swap for Redis-backed in distributed setups |
 | `defaultAlgorithm` | `"fixed-window" \| "sliding-window" \| "token-bucket" \| "leaky-bucket"` | `"fixed-window"` | Algorithm used when a rule doesn't specify one |
-| `clientIp` | `(c: Context) => string \| undefined` | x-forwarded-for / x-real-ip / cf-connecting-ip / true-client-ip | Custom client-IP resolver used by the `"ip"` scope part |
+| `trustProxy` | `boolean \| number` | `false` | Which `X-Forwarded-For` entries the `"ip"` scope part believes. `false`: none, the socket address is the client. A number `n`: `n` proxies you run append to the header, so the client is the `n`-th entry from the right. `true`: the leftmost entry (only when your proxy overwrites the header) |
+| `clientIp` | `(c: Context) => string \| undefined` | socket address / `trustProxy` | Custom client-IP resolver for the `"ip"` scope part, e.g. `cf-connecting-ip` behind Cloudflare. Requests whose address is unknown share one bucket |
 | `userId` | `(c: Context) => string \| undefined \| Promise<...>` | `c.auth?.data?.user?.id` | Custom user-id resolver used by the `"user"` scope part |
 | `hookOrder` | `number` | `-500` | Pre-validation hook order. Default places this after `AuthenticationPlugin` (`-1000`) so dynamic callbacks can read `c.auth` |
 | `headers` | `"standard" \| "legacy" \| "both" \| false` | `"standard"` | Which informational headers to emit. `Retry-After` is always emitted on 429. |

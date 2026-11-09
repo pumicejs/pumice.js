@@ -20,7 +20,7 @@ bypasses the envelope entirely.
 {
   "code": "SUCCESS",
   "message": "OK",
-  "data": { /* your payload, validated against the declared response schema */ }
+  "data": { /* your payload, typed by the declared response schema */ }
 }
 ```
 
@@ -58,8 +58,9 @@ Three patterns; pick whichever reads cleanest for the case at hand.
 
 ### 1. Implicit return — match the declared status
 
-If your handler returns a value, it's validated against the response
-schema for the **default success status**:
+If your handler returns a value, it's typed by the response schema for the
+**default success status**. The schema is types and docs only: the value is
+sent as returned, not validated or stripped.
 
 ```ts
 .response(UserSchema)             // -> single, default 200
@@ -103,11 +104,11 @@ When you need a non-JSON or non-enveloped response, return a `Response`
 
 ```ts
 .handle((c) => c.text("ping")) // raw text/plain
-.handle((c) => c.json({ raw: true })) // raw JSON, no envelope
+.handle((c) => c.json({ raw: true })) // still wrapped in the success envelope
 .handle(() => new Response("hello", { headers: { "content-type": "text/plain" } }));
 ```
 
-The response schema validation skips when you return a `Response` directly.
+A returned `Response` is sent as is, without the envelope.
 
 ---
 
@@ -252,7 +253,7 @@ them:
 | `401` | `AuthenticationPlugin` when `authentication.required: true` and no valid auth |
 | `403` | `ClientGenerationPlugin` / `DocsPlugin` authenticator returning `{ allow: false }` |
 | `404` | Unknown URL (built-in not-found handler) |
-| `415` / `413` | Multipart upload validation errors (wrong MIME, too big) |
+| `413` | Request body above the route's `bodyLimit` (`PAYLOAD_TOO_LARGE`) |
 | `429` | `RatelimitPlugin` on bucket exceeded or hard-block active |
 
 All of them use the error envelope. None of them collide with your own

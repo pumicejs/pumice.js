@@ -3,13 +3,16 @@ import type { z } from "zod";
 import type { ApiError, ApiErrorIssue } from "../errors/api.js";
 import type { FileConfig, FilesConfig, UploadedFile } from "./file.js";
 
-export type Simplify<T> = { [TKey in keyof T]: T[TKey] } & {};
+export type { Simplify } from "../utils/types.js";
+import type { Simplify } from "../utils/types.js";
 
 export type AnyRouteSchema = z.ZodTypeAny;
 export type RouteParamsSchema = z.ZodTypeAny;
 type Digit = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
 type NumberFromString<TValue extends string> =
-  TValue extends `${infer TValueAsNumber extends number}` ? TValueAsNumber : never;
+  TValue extends `${infer TValueAsNumber extends number}`
+    ? TValueAsNumber
+    : never;
 type SuccessStatusString = `2${Digit}${Digit}`;
 type ErrorStatusString = `4${Digit}${Digit}`;
 export type SuccessStatusCode = NumberFromString<SuccessStatusString>;
@@ -84,19 +87,15 @@ export type RouteThrowsSchemaMap = Record<
 >;
 export type RouteThrowsSchema = RouteThrowsSchemaMap;
 
-type HasNon2xxKeys<TSchemaMap extends RouteResponseSchemaMap> = Exclude<
-  keyof TSchemaMap & number,
-  SuccessStatusCode
-> extends never
-  ? false
-  : true;
+type HasNon2xxKeys<TSchemaMap extends RouteResponseSchemaMap> =
+  Exclude<keyof TSchemaMap & number, SuccessStatusCode> extends never
+    ? false
+    : true;
 
-type HasNon4xxKeys<TSchemaMap extends RouteThrowsSchemaMap> = Exclude<
-  keyof TSchemaMap & number,
-  ErrorStatusCode
-> extends never
-  ? false
-  : true;
+type HasNon4xxKeys<TSchemaMap extends RouteThrowsSchemaMap> =
+  Exclude<keyof TSchemaMap & number, ErrorStatusCode> extends never
+    ? false
+    : true;
 
 type Ensure2xxMap<TSchema extends RouteResponseSchema> =
   TSchema extends z.ZodTypeAny
@@ -191,19 +190,20 @@ type InferSchemaValue<TSchema extends z.ZodTypeAny | undefined> =
 
 export type InferRouteResponsePayload<
   TResponse extends RouteResponseSchema | undefined,
-> =
-  TResponse extends z.ZodTypeAny
-    ? z.infer<TResponse>
-    : TResponse extends RouteResponseSchemaMap
-      ? z.infer<TResponse[keyof TResponse & number]>
-      : unknown;
+> = TResponse extends z.ZodTypeAny
+  ? z.infer<TResponse>
+  : TResponse extends RouteResponseSchemaMap
+    ? z.infer<TResponse[keyof TResponse & number]>
+    : unknown;
 
-type InferThrowSchemaEntry<TThrows, TStatus extends number> =
-  TThrows extends RouteThrowsSchema
-    ? TStatus extends keyof TThrows & number
-      ? TThrows[TStatus]
-      : never
-    : never;
+type InferThrowSchemaEntry<
+  TThrows,
+  TStatus extends number,
+> = TThrows extends RouteThrowsSchema
+  ? TStatus extends keyof TThrows & number
+    ? TThrows[TStatus]
+    : never
+  : never;
 
 type InferDataField<TData> = [TData] extends [void] | [undefined]
   ? { data?: TData }
@@ -212,13 +212,6 @@ type InferDataField<TData> = [TData] extends [void] | [undefined]
 type InferIssueField<TIssues> = [TIssues] extends [void] | [undefined]
   ? { issues?: ApiErrorIssue[] }
   : { issues?: TIssues };
-
-type InferIssueItem<TIssues> = TIssues extends Array<infer TIssue>
-  ? TIssue
-  : ApiErrorIssue;
-type NormalizeIssues<TIssues> = [TIssues] extends [never]
-  ? ApiErrorIssue[]
-  : TIssues;
 
 type InferThrowData<TThrowSchema> = TThrowSchema extends z.ZodTypeAny
   ? z.infer<TThrowSchema>
@@ -239,10 +232,10 @@ type InferThrowOptionsForStatus<TThrows, TStatus extends number> =
     ? TEntry extends RouteThrowSchema
       ? InferDataField<InferThrowData<TEntry>> &
           InferIssueField<InferThrowIssues<TEntry>> & {
-          status: TStatus;
-          message?: string;
-          headers?: Record<string, string>;
-        }
+            status: TStatus;
+            message?: string;
+            headers?: Record<string, string>;
+          }
       : TEntry extends RouteThrowsCodeSchemaMap
         ? {
             [TCode in keyof TEntry & string]: {
@@ -277,28 +270,32 @@ type ExpandUnion<TValue> = TValue extends unknown
   ? { [TKey in keyof TValue]: TValue[TKey] }
   : never;
 
-type InferExplicitResponseOptions<TResponse extends RouteResponseSchema | undefined> =
-  TResponse extends RouteResponseSchemaMap
-    ? {
-        [TStatus in keyof TResponse & number]: {
-          status: TStatus;
-          data: z.infer<TResponse[TStatus]>;
-          code?: string;
-          message?: string;
-          issues?: ApiErrorIssue[];
-          headers?: Record<string, string>;
-        };
-      }[keyof TResponse & number]
-    : {
-        status: SuccessStatusCode;
-        data: InferRouteResponsePayload<TResponse>;
+type InferExplicitResponseOptions<
+  TResponse extends RouteResponseSchema | undefined,
+> = TResponse extends RouteResponseSchemaMap
+  ? {
+      [TStatus in keyof TResponse & number]: {
+        status: TStatus;
+        data: z.infer<TResponse[TStatus]>;
         code?: string;
         message?: string;
         issues?: ApiErrorIssue[];
         headers?: Record<string, string>;
       };
+    }[keyof TResponse & number]
+  : {
+      status: SuccessStatusCode;
+      data: InferRouteResponsePayload<TResponse>;
+      code?: string;
+      message?: string;
+      issues?: ApiErrorIssue[];
+      headers?: Record<string, string>;
+    };
 
+// `TResponse` is a phantom parameter: it isn't read in the body, but it keeps
+// the declared response contract attached to the value for inference.
 export type ExplicitRouteResponse<
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- phantom, see above
   TResponse extends RouteResponseSchema | undefined = undefined,
 > = {
   readonly _kind: "explicit_route_response";
@@ -310,18 +307,19 @@ export type ExplicitRouteResponse<
   readonly headers?: Record<string, string>;
 };
 
-export type TypedJsonResponder<TResponse extends RouteResponseSchema | undefined> =
-  TResponse extends RouteResponseSchemaMap
-    ? <TStatus extends keyof TResponse & number>(
-        payload: z.infer<TResponse[TStatus]>,
-        status: TStatus,
-        headers?: Record<string, string>,
-      ) => Response
-    : (
-        payload: InferRouteResponsePayload<TResponse>,
-        status?: number,
-        headers?: Record<string, string>,
-      ) => Response;
+export type TypedJsonResponder<
+  TResponse extends RouteResponseSchema | undefined,
+> = TResponse extends RouteResponseSchemaMap
+  ? <TStatus extends keyof TResponse & number>(
+      payload: z.infer<TResponse[TStatus]>,
+      status: TStatus,
+      headers?: Record<string, string>,
+    ) => Response
+  : (
+      payload: InferRouteResponsePayload<TResponse>,
+      status?: number,
+      headers?: Record<string, string>,
+    ) => Response;
 
 export type TypedRouteResponseFactory<
   TResponse extends RouteResponseSchema | undefined,
@@ -392,48 +390,45 @@ export type TypedRouteContextWithParamsValue<
   TParamsValue,
   TProcedures extends object = {},
   TContextExtensions extends object = {},
-> = Omit<
-  Context,
-  "json" | "body" | "error"
-> &
+> = Omit<Context, "json" | "body" | "error"> &
   Simplify<{
-  /**
-   * Parsed and validated request body.
-   */
-  body: InferSchemaValue<TSchema["body"]>;
-  /**
-   * Parsed and validated query string values.
-   */
-  query: InferSchemaValue<TSchema["query"]>;
-  /**
-   * Parsed and validated request headers.
-   */
-  headers: InferSchemaValue<TSchema["headers"]>;
-  /**
-   * Parsed and validated route params from dynamic path segments.
-   */
-  params: TParamsValue;
-  /**
-   * Contributions returned by applied procedures, keyed by the property
-   * names they returned from their handlers.
-   */
-  procedures: TProcedures;
-  /**
-   * Sends JSON response payloads constrained by `response` schema.
-   */
-  json: TypedJsonResponder<TSchema["response"]>;
-  /**
-   * Type-check helper for implicit return payloads.
-   */
-  returns: TypedRouteReturnValidator<TSchema["response"]>;
-  /**
-   * Creates explicit typed responses with metadata (`code`, `message`, `issues`).
-   */
-  response: TypedRouteResponseFactory<TSchema["response"]>;
-  /**
-   * Creates typed `ApiError` values based on declared `throws` schema.
-   */
-  error: TypedRouteErrorFactory<TSchema["throws"]>;
+    /**
+     * Parsed and validated request body.
+     */
+    body: InferSchemaValue<TSchema["body"]>;
+    /**
+     * Parsed and validated query string values.
+     */
+    query: InferSchemaValue<TSchema["query"]>;
+    /**
+     * Parsed and validated request headers.
+     */
+    headers: InferSchemaValue<TSchema["headers"]>;
+    /**
+     * Parsed and validated route params from dynamic path segments.
+     */
+    params: TParamsValue;
+    /**
+     * Contributions returned by applied procedures, keyed by the property
+     * names they returned from their handlers.
+     */
+    procedures: TProcedures;
+    /**
+     * Sends JSON response payloads constrained by `response` schema.
+     */
+    json: TypedJsonResponder<TSchema["response"]>;
+    /**
+     * Type-check helper for implicit return payloads.
+     */
+    returns: TypedRouteReturnValidator<TSchema["response"]>;
+    /**
+     * Creates explicit typed responses with metadata (`code`, `message`, `issues`).
+     */
+    response: TypedRouteResponseFactory<TSchema["response"]>;
+    /**
+     * Creates typed `ApiError` values based on declared `throws` schema.
+     */
+    error: TypedRouteErrorFactory<TSchema["throws"]>;
   }> &
   InferFileContext<TSchema> &
   InferFilesContext<TSchema> &

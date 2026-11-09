@@ -21,11 +21,11 @@ import {
 import { InMemoryRatelimitStore } from "./store.js";
 import {
   buildRuleKey,
-  defaultClientIp,
   defaultUserId,
   type ScopeResolverOptions,
 } from "./scope.js";
 import { createApiJsonErrorResponse } from "../../http/json-envelope.js";
+import { resolveClientIp, type TrustProxy } from "../../utils/client-ip.js";
 
 /**
  * Options for {@link RatelimitPlugin}.
@@ -42,9 +42,17 @@ export type RatelimitPluginOptions = {
    */
   defaultAlgorithm?: RatelimitAlgorithmName;
   /**
-   * Custom client-IP resolver, used by the `"ip"` scope part. The
-   * default reads `x-forwarded-for`, `x-real-ip`, `cf-connecting-ip`,
-   * `true-client-ip` (in that order).
+   * Which `X-Forwarded-For` entries the `"ip"` scope part believes. Default
+   * `false`: none, the socket's peer address is the client. Set it to the
+   * number of reverse proxies you run in front of the server (usually `1`).
+   * See {@link TrustProxy}.
+   */
+  trustProxy?: TrustProxy;
+  /**
+   * Custom client-IP resolver for the `"ip"` scope part, replacing the
+   * socket address / `trustProxy` logic (e.g. to read `cf-connecting-ip`
+   * behind Cloudflare). Return `undefined` when unknown: such requests share
+   * one `"anon"` bucket, as do requests without a socket (`server.fetch()`).
    */
   clientIp?: (context: Context) => string | undefined;
   /**
@@ -117,9 +125,9 @@ async function resolveDynamic(
   return typeof value === "function" ? value(context) : value;
 }
 
-function normalizeRouteConfig(
-  raw: RouteRatelimitConfig | undefined,
-): { rules: RatelimitRule[] } {
+function normalizeRouteConfig(raw: RouteRatelimitConfig | undefined): {
+  rules: RatelimitRule[];
+} {
   if (!raw) return { rules: [] };
   if ("rules" in raw && Array.isArray(raw.rules)) {
     if (raw.disabled) return { rules: [] };
@@ -253,7 +261,8 @@ function pickMostRestrictive(states: RatelimitState[]): RatelimitState {
     const candidate = states[i]!;
     if (
       candidate.remaining < best.remaining ||
-      (candidate.remaining === best.remaining && candidate.resetAt < best.resetAt)
+      (candidate.remaining === best.remaining &&
+        candidate.resetAt < best.resetAt)
     ) {
       best = candidate;
     }
@@ -331,8 +340,7 @@ function buildHelpers(runtimes: RuleRuntime[]): RatelimitingRuleHelpers {
       if (runtimes.length === 0) return NOOP_CONSUME_RESULT;
       const states: RatelimitState[] = [];
       let firstRejection:
-        | { state: RatelimitState; retryAfterMs: number }
-        | undefined;
+        { state: RatelimitState; retryAfterMs: number } | undefined;
 
       for (const runtime of runtimes) {
         const evaluation = await evaluateRule(runtime, {
@@ -485,7 +493,9 @@ export function RatelimitPlugin(
   const headersMode = options.headers ?? "standard";
   const scopeOptions: ScopeResolverOptions = {
     userId: options.userId ?? defaultUserId,
-    clientIp: options.clientIp ?? defaultClientIp,
+    clientIp:
+      options.clientIp ??
+      ((context) => resolveClientIp(context, options.trustProxy)),
   };
   const onLimitReached = options.onLimitReached;
 
@@ -567,7 +577,10 @@ export function RatelimitPlugin(
                       response.headers.set(
                         "Retry-After",
                         String(
-                          Math.max(1, Math.ceil(evaluation.retryAfterMs / 1000)),
+                          Math.max(
+                            1,
+                            Math.ceil(evaluation.retryAfterMs / 1000),
+                          ),
                         ),
                       );
                     }

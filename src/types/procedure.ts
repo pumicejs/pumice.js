@@ -133,6 +133,9 @@ export type RouteProcedureFactory<
 /**
  * Widest-type alias used when accumulating procedures on the route builder.
  */
+// `any`, not `unknown`: the handler's context parameter is contravariant, so
+// only `any` lets every concrete procedure be assigned to this alias.
+/* eslint-disable @typescript-eslint/no-explicit-any -- widest alias, see above */
 export type AnyRouteProcedureDefinition = RouteProcedureDefinition<
   any,
   any,
@@ -158,6 +161,7 @@ export type AppliedRouteProcedure<
 };
 
 export type AnyAppliedRouteProcedure = AppliedRouteProcedure<any, any>;
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 /**
  * Options accepted by `route().procedure(procedure, options?)`.
