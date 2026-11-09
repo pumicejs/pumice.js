@@ -18,6 +18,8 @@ A PR that builds an entry moves it to "Done"; one that finds something new adds 
   twice (§1.1); a route file imported by another registered under the importer's path (§1.2);
   the rate limiter and logger trusted `X-Forwarded-For` (§2.1, now socket address plus
   `trustProxy`); no body size limit (§2.2, now `bodyLimit`, default 1 MiB).
+- 2026-11-09: released as **0.1.0** from CI, with provenance, through trusted publishing. The
+  stale `claude/priceless-mccarthy-ed0bd6` branch is deleted.
 
 ## Bugs
 
@@ -139,13 +141,18 @@ plugin that needs a hook.
 
 ## Repository
 
-- **Delete the stale remote branch** `claude/priceless-mccarthy-ed0bd6` (behind main; its work is
-  merged). The user's call: `git push origin --delete claude/priceless-mccarthy-ed0bd6`.
 - **Playbook skills** (`filstawski/playbook`, vendored here): `api-route-structure`'s
   `posts/search.ts` uses `.params()` where it needs `.query()`; `api-framework-stack`'s entrypoint
   assumes `listen()` resolves once listening (§1.4) and its `ClientGenerationPlugin()` is
   unauthenticated (§2.4); `api-route-procedures`' `throw 404` becomes a 500 on routes that
-  declare `.throws(...)` (§1.6). Fix them in the playbook, then `npx skills update`.
+  declare `.throws(...)` (§1.6). The corrections are filstawski/playbook#2. *Trigger:* that PR
+  merged; then `npx skills update` here.
+- **Staged publishing** (far future). npm can hold each CI-published version until a maintainer
+  approves it with 2FA (`npm stage publish`, npm 11.15 or later; approve on npmjs.com or with
+  `npm stage approve`), so a compromised workflow or CI dependency can't publish alone.
+  Decided 2026-11-09: not now; Filip chose direct publishing. *Trigger:* a second person with
+  publish rights, or a supply-chain incident that reaches CI. Then switch `release.yml` to
+  `npm stage publish --provenance` and untick **Allow npm publish** on the trusted publisher.
 
 ## Open questions
 
@@ -154,12 +161,9 @@ Each with a leaning; the user decides.
 1. **Response validation** (REVIEW §1.9). The docs now say plainly that responses are types and
    docs only. Leaning: keep it that way, and add an opt-in `validateResponses: "development"`
    that parses (and strips) outside production.
-2. **The next version number.** This branch changes defaults apps can notice: peer dependencies
-   (`npm i zod hono`), the client address (socket, not `X-Forwarded-For`), and a 1 MiB body limit.
-   Leaning: release it as **0.1.0**, with those three in the notes.
-3. **One repository for the three packages?** The manifest types are copied by hand into client
+2. **One repository for the three packages?** The manifest types are copied by hand into client
    and docs. Leaning: shared fixtures now (done), and decide a monorepo with a shared types
    package once a second contract change has gone through all three.
-4. **Upload routes without a declared size** get the 1 MiB default. Leaning: keep it (safe by
+3. **Upload routes without a declared size** get the 1 MiB default. Leaning: keep it (safe by
    default) and say so in the release notes; the alternative is a higher default for multipart
    only.

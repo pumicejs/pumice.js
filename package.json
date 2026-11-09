@@ -31,7 +31,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/pumicejs/pumice.js.git"
+    "url": "git+https://github.com/pumicejs/pumice.js.git"
   },
   "bugs": {
     "url": "https://github.com/pumicejs/pumice.js/issues"
