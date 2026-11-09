@@ -72,7 +72,19 @@ export const server = new ServerBuilder()
   .rootDir(__dirname)
   .use(new CorsPlugin())
   .use(ClientIpPlugin())
-  .use(ClientGenerationPlugin())
+  // The manifest lists every route and its config; gate it so only codegen
+  // (local runs, CI) can read it in production.
+  .use(
+    ClientGenerationPlugin({
+      authenticator: (c) => {
+        // An unset token must lock the manifest, not open it.
+        const token = process.env.CODEGEN_TOKEN;
+        return token && c.req.header("x-codegen-token") === token
+          ? { allow: true }
+          : { allow: false, status: 404 };
+      },
+    }),
+  )
   .use(docsPlugin)
   .use(authPlugin)
   .use(RatelimitPlugin())
@@ -153,8 +165,10 @@ import { startWorkers } from "./lib/workers";
 
 startWorkers();
 
-server.listen({ port: 3000 }).then(() => {
-  console.log("Routes loaded:", server.routes.cache.size);
+// No top-level await: the app is CommonJS (it uses `__dirname` above).
+server.listen({ port: 3000 }).catch((error) => {
+  console.error(error);
+  process.exit(1);
 });
 
 process.on("uncaughtException", (error) => {
@@ -165,6 +179,10 @@ process.on("unhandledRejection", (error) => {
   console.error(error);
 });
 ```
+
+Don't hang startup logic on `listen()` resolving: in pumice.js up to 0.0.17
+it resolves before the port is bound, and a taken port crashes the process
+with an unhandled `EADDRINUSE` (pumice.js `docs/development/roadmap.md`).
 
 Importing each schedule file purely for its side effect (registering a cron
 job on module load) keeps "what runs periodically in this process"

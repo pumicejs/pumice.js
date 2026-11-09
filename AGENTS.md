@@ -45,7 +45,7 @@ publishes (`docs/development/releasing.md`). Never publish from a laptop.
 | Opening a pull request | `git-pull-requests` and `.github/pull_request_template.md` |
 | Releasing | `docs/development/releasing.md` |
 | Handing work to another agent | `docs-agent-handoff-spec` |
-| Examples of how apps use pumice | `api-framework-stack`, `api-route-structure`, `api-route-procedures` (app-side practice; three known inaccuracies are listed in `roadmap.md`, "Playbook skills") |
+| Examples of how apps use pumice | `api-framework-stack`, `api-route-structure`, `api-route-procedures` (app-side practice) |
 
 ## Playbook
 

@@ -156,6 +156,12 @@ export const inviteProcedure = server
   start diverging beyond what `config` covers, that's a sign the access
   rule itself needs to move somewhere more central (a real permission
   layer) rather than living in route-loading code.
+- A route that declares `.throws({...})` lists the statuses its
+  procedures throw too (`404`, `403`). pumice.js checks every thrown
+  status against the route's `throws`, and procedures can't declare their
+  own yet, so an undeclared `404` reaches the client as a 500
+  `"Throw status validation failed."` Routes without `.throws()` aren't
+  affected.
 - Procedures compose with route-level middleware but solve a different
   problem: middleware (`.mw.ts` files) runs for a whole subtree regardless
   of which specific resource is involved; a procedure is scoped to loading

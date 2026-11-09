@@ -157,14 +157,18 @@ server
   .route()
   .get()
   .describe("Search the current user's posts by title")
-  .params(z.object({ q: z.string().min(1) }))
+  .query(z.object({ q: z.string().min(1) }))
   .response(z.array(PostSchema))
   .handle(async (c) => {
     return postRepo.findMany({
-      where: { userId: c.auth.data.user.id, title: { contains: c.params.q } },
+      where: { userId: c.auth.data.user.id, title: { contains: c.query.q } },
     });
   });
 ```
+
+`.params(...)` is only for the dynamic segments of the path (`[postId]`);
+the query string goes through `.query(...)`. A `q` declared in `.params()`
+never receives `?q=`, so every request fails validation with a 400.
 
 ### Scoped middleware
 
