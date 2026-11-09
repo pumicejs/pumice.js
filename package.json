@@ -64,7 +64,7 @@
     "eslint": "^10.13.0",
     "hono": "^4.13.14",
     "prettier": "^3.9.10",
-    "typescript": "^6.0.2",
+    "typescript": "^7.0.2",
     "typescript-eslint": "^8.72.1",
     "vitest": "^5.0.5",
     "zod": "^4.3.6"
