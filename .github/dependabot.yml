@@ -22,6 +22,10 @@ updates:
       # newest; it moves when engines does.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
+      # typescript-eslint supports TypeScript >=4.8.4 <6.1.0, and a newer TypeScript can't even
+      # be installed next to it (ERESOLVE). Drop this once its peer range moves.
+      - dependency-name: typescript
+        versions: [">=6.1.0"]
 
   - package-ecosystem: github-actions
     directory: /
