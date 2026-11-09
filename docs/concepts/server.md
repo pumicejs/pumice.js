@@ -87,7 +87,7 @@ No files are loaded; no port is bound.
 await server.listen({ port: 3000 });
 ```
 
-Performs three steps in order:
+Performs three steps in order (the first two are `load()`, below):
 
 1. **`applyPlugins()`** — runs every registered plugin's `apply({ server, app })`
    exactly once. Plugins use this to mount HTTP routes (`/@client`, `/@docs`),
@@ -96,14 +96,31 @@ Performs three steps in order:
    imports every `route.{ts,js,...}` / `index.{ts,js,...}` /
    `middleware.{ts,js,...}` / `*.mw.{ts,js,...}`. During import, calls to
    `server.route()` / `server.middleware()` / `server.procedure()` register
-   against the file currently being loaded.
+   against the file that calls them: the innermost discovered route or
+   middleware file on the call stack, so a route file that imports another
+   still registers each file's routes under its own path.
 3. **`serve()`** — binds the port. On the `listening` callback, the server
    stamps `clientManifestListeningSince` so the client manifest can include
    it.
 
-Calling `listen()` twice doesn't re-apply plugins (it's idempotent on that
-front), but it _will_ rediscover routes and bind a second listener — you
-typically never want that.
+Calling `listen()` twice doesn't load the server again, but it _will_ bind a
+second listener — you typically never want that. `listen()` resolves before
+the port is bound, and a bind error (port taken) is not reported through the
+promise yet (docs/development/roadmap.md).
+
+### `load()` and `fetch()` — without a port
+
+```ts
+await server.load(); // plugins + route discovery, once; resolves to the URL paths
+const res = await server.fetch(new Request("http://test/users/1"));
+```
+
+`load()` is the first half of `listen()`: idempotent, every call resolves to
+the same list of registered paths. `fetch(request, env?)` answers one request
+in-process (it calls `load()` first if needed). Use them in tests, or to
+mount the app on another runtime. `env` becomes Hono's bindings; on Node,
+`listen()` passes the socket there, which is where the rate limiter and the
+logger read the client address from. Without it, the address is unknown.
 
 ---
 

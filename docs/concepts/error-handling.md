@@ -190,10 +190,9 @@ declaration:
 | `401` | `AuthenticationPlugin` when `required` and request is anonymous | `"UNAUTHORIZED"` |
 | `403` | `ClientGenerationPlugin` / `DocsPlugin` authenticator rejected | `"FORBIDDEN"` (overridable) |
 | `404` | URL didn't match any route | `"NOT_FOUND"` |
-| `413` | File above `maxSize` / `totalMaxSize` | `"PAYLOAD_TOO_LARGE"` |
-| `415` | File type not in `allowedTypes` | `"UNSUPPORTED_MEDIA_TYPE"` |
+| `413` | Request body above the route's `bodyLimit` (default 1 MiB) | `"PAYLOAD_TOO_LARGE"` |
 | `429` | `RatelimitPlugin` bucket exceeded or hard-blocked | `"RATE_LIMITED"` (overridable) |
-| `500` | Uncaught error inside a handler / procedure / middleware | `"INTERNAL_SERVER_ERROR"` |
+| `500` | Uncaught error inside a handler / procedure / middleware | `"INTERNAL_ERROR"` |
 
 All of them use the [error envelope](./response-envelope.md).
 

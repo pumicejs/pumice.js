@@ -145,8 +145,8 @@ strings.
 
 Two forms:
 
-- **Single status** — `.response(UserSchema)` validates the default `200`
-  body.
+- **Single status** — `.response(UserSchema)` types the default `200`
+  body (types and docs only; nothing checks it at runtime).
 - **Status map** — `.response({ 200: UserSchema, 201: NewUserSchema })`
   declares multiple success statuses. `c.response({ status, data })` and
   the implicit return type are then constrained to the declared statuses.
@@ -230,14 +230,15 @@ Examples:
 ### Three ways to send a response
 
 ```ts
-// 1. Implicit return — validated against the matching response status
+// 1. Implicit return — typed by the matching response status
 return { id: 1, name: "Ada" };
 
 // 2. Explicit status / data picker
 return c.response({ status: 201, data: { id: 1, name: "Ada" } });
 
 // 3. Returning a raw Response — bypasses the envelope entirely
-return c.json({ raw: true });    // typed Hono helper
+return new Response("raw", { status: 202 });
+// (c.json(payload) is wrapped in the success envelope like a plain return)
 ```
 
 Mixing patterns is fine. The first form is for "I have the data, just send

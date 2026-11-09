@@ -20,7 +20,7 @@ API without ceremony.
 - **File-system routing** — `src/routes/**` becomes your URL tree. Dynamic
   segments (`[id]`), static-beats-dynamic priority, and routing groups
   (`(auth)`) for organization without URL pollution.
-- **Fluent, fully typed route builder** — `server.route().params().post().body().response().throws().handle(...)`. Body, query, headers, params, response, and thrown errors are all validated at runtime and typed at compile time.
+- **Fluent, fully typed route builder** — `server.route().params().post().body().response().throws().handle(...)`. Body, query, headers, params and thrown errors are validated at runtime; the response schema types the handler and feeds the docs and client, but responses are **not** validated or stripped at runtime.
 - **Procedures** — reusable, typed request-time logic (auth checks, resource
   loading) that merge params with routes and contribute typed values to
   `c.procedures`.
@@ -42,10 +42,12 @@ API without ceremony.
 ## Installation
 
 ```bash
-npm install pumice.js zod
+npm install pumice.js zod hono
 ```
 
-`pumice.js` re-exports `z` from Zod for convenience.
+`zod` and `hono` are peer dependencies, so your app and the framework share
+one copy of each. `pumice.js` re-exports `z` from Zod for convenience.
+Requires Node.js 22 or later.
 
 ---
 
@@ -84,6 +86,14 @@ await server
 > Under the hood, `server.listen()` discovers every file under
 > `<rootDir>/<basePath>` (defaults: `<cwd>/src/routes`) and registers the
 > routes it finds.
+>
+> To use the server without a port (tests, other runtimes), call
+> `await server.load()` and send requests through `server.fetch(request)`:
+>
+> ```ts
+> await server.load();
+> const res = await server.fetch(new Request("http://test/users/1"));
+> ```
 
 ### 3. Write a route file
 
@@ -214,7 +224,7 @@ server
     // c.body, c.query, c.headers, c.params, c.file, c.files — all fully typed
     // c.procedures.<name>    — values contributed by procedures
     // c.auth                 — contributed by AuthenticationPlugin
-    return { /* validated against response schema */ };
+    return { /* typed by the response schema (not checked at runtime) */ };
   })
   // Chain another method on the SAME path
   .post()
@@ -227,16 +237,21 @@ server
 Inside a handler you have three patterns:
 
 ```ts
-// 1. Implicit return — validated against the matching `response[status]`
+// 1. Implicit return — typed by `response[200]`; not validated or stripped at runtime
 return { id: 1, name: "Ada" };            // -> 200 by default
 
 // 2. Explicit response with status picker
-return c.response({ status: 201, data: { /* validated against response[201] */ } });
+return c.response({ status: 201, data: { /* typed by response[201] */ } });
 
 // 3. Shorthand error throws
 throw 404;                                 // -> matched against throws[404] (z.void())
 throw c.error({ status: 409, code: "STATE_CONFLICT", data: {...}, message: "..." });
 ```
+
+> **Responses are types and docs only.** Nothing parses what a handler
+> returns against `.response(...)`, and unknown keys are not stripped: return
+> a database row with a `passwordHash` and the client receives it. Pick the
+> fields you send explicitly.
 
 All successful JSON bodies are wrapped in the envelope:
 
@@ -399,6 +414,9 @@ import { LoggerPlugin } from "pumice.js";
 
 new ServerBuilder().use(new LoggerPlugin(/* options */));
 ```
+
+Options: `logger` (default `console`), `logRequestStart`, `logResponseEnd`,
+and `trustProxy` for the logged `ip=` (same meaning as the rate limiter's).
 
 ### `AuthenticationPlugin`
 
@@ -609,13 +627,21 @@ new ServerBuilder().use(RatelimitPlugin({ store: redisStore }));
 RatelimitPlugin({
   store,                  // default: InMemoryRatelimitStore
   defaultAlgorithm,       // default: "fixed-window"
-  clientIp,               // default: x-forwarded-for / x-real-ip / cf-connecting-ip
+  trustProxy,             // default: false — key on the socket address, ignore X-Forwarded-For
+  clientIp,               // custom resolver, replaces the socket / trustProxy logic
   userId,                 // default: c.auth?.data?.user?.id
   hookOrder,              // default: -500 (after AuthenticationPlugin)
   headers,                // "standard" | "legacy" | "both" | false; default: "standard"
   onLimitReached,         // override the 429 response body
 });
 ```
+
+The `"ip"` scope part uses the connection's address and ignores
+`X-Forwarded-For`, which any client can write. Behind reverse proxies you
+run, set `trustProxy` to their number (usually `1`): the client is then the
+entry that many hops from the right of `X-Forwarded-For`, and anything a
+client prepended is ignored. Requests without a known address (for example
+`server.fetch()` without Node bindings) share one bucket.
 
 ### `ClientGenerationPlugin`
 
@@ -707,7 +733,7 @@ Declare single or multiple uploads with typed, validated access:
 server
   .route()
   .post()
-  .file({ fieldName: "avatar", maxSize: 2 * 1024 * 1024, mimeTypes: ["image/png", "image/jpeg"] })
+  .file({ fieldName: "avatar", maxSize: 2 * 1024 * 1024, allowedTypes: ["image/png", "image/jpeg"] })
   .handle((c) => {
     // c.file: { name, size, type, buffer, ... }
     return { filename: c.file.name };
@@ -719,6 +745,10 @@ server
   .files({ fieldName: "attachments", maxCount: 5 })
   .handle((c) => c.files.map((f) => f.name));
 ```
+
+`allowedTypes` compares the MIME type and file name the client sent; it
+doesn't look at the bytes. Upload routes accept a body up to their declared
+`maxSize` / `totalMaxSize` (see `bodyLimit` below).
 
 ---
 
@@ -732,11 +762,19 @@ new ServerBuilder()
   .config({
     routes: {
       authentication: { required: true },
+      bodyLimit: 512 * 1024, // bytes; default 1 MiB
       // ...any RouteConfigExtensions contributed by plugins
     },
   })
   .build();
 ```
+
+`bodyLimit` is the framework's own key. Every route rejects a larger body
+with 413 `PAYLOAD_TOO_LARGE` before parsing it, checked on `Content-Length`
+and on the bytes as they stream in. A route with `.file()` / `.files()`
+defaults to its declared size limit plus 64 KiB when that is more than
+1 MiB; `bodyLimit: false` turns the check off for a route that reads
+`c.req.raw.body` itself.
 
 Defaults are what procedures and middleware use for their **context
 refinement** typing, so choose them to match your app's baseline.
@@ -752,7 +790,7 @@ endpoints):
 ```ts
 import { createApiJsonSuccessResponse, createApiJsonErrorResponse } from "pumice.js";
 
-return createApiJsonSuccessResponse(200, { data: { ok: true } });
+return createApiJsonSuccessResponse({ ok: true }, { status: 200 });
 return createApiJsonErrorResponse(403, { code: "FORBIDDEN", message: "..." });
 ```
 
@@ -770,7 +808,7 @@ return createApiJsonErrorResponse(403, { code: "FORBIDDEN", message: "..." });
 
 ### Types
 
-- **Server**: `ServerConstructOptions`, `ServerConfig`, `ServerListenOptions`
+- **Server**: `ServerConstructOptions`, `ServerConfig`, `ServerListenOptions`, `TrustProxy`
 - **Plugins**: `ServerPlugin`, `ServerPluginContext`, `AuthState`, `Authenticator`
 - **Route builder**: `RouteBuilderMethodStage`, `RouteBuilderMethodSelectionStage`, `RouteDefinition`, `RouteMethod`, `RouteConfig`, `RouteSchema`, `RouteResponseSchema`, `RouteThrowsSchema`, `RouteAuthenticationConfig`
 - **Procedures**: `ProcedureBuilderStage`, `RouteProcedureDefinition`, `RouteProcedureFactory`, `RouteProcedureHandler`, `RouteProcedureHandlerContext`, `AppliedRouteProcedure`, `RouteProcedureApplyOptions`, `ProcedureParamsSchema`, `ProcedureContributions`, `InferProcedureParamsValue`, `InferAppliedProcedureContributions`, `InferMergedParamsValue`
@@ -789,6 +827,11 @@ return createApiJsonErrorResponse(403, { code: "FORBIDDEN", message: "..." });
 - GitHub: [pumicejs/pumice.js](https://github.com/pumicejs/pumice.js)
 - Issues: [pumicejs/pumice.js/issues](https://github.com/pumicejs/pumice.js/issues)
 
+## Contributing
+
+How the code is organized, tested and released: [docs/development/](docs/development/README.md).
+Agents start at [AGENTS.md](AGENTS.md).
+
 ## License
 
-ISC
+ISC — see [LICENSE](LICENSE).

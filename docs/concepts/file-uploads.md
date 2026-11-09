@@ -52,7 +52,7 @@ c.file.stream()       // ReadableStream<Uint8Array>
 | Field | Type | Default | Effect |
 |---|---|---|---|
 | `fieldName` | `string` | `"file"` | Multipart form field to read the file from |
-| `maxSize` | `number` (bytes) | unbounded | Rejects with 400 if exceeded |
+| `maxSize` | `number` (bytes) | unbounded | Rejects with 400 if exceeded; also raises the route's body limit |
 | `minSize` | `number` (bytes) | `0` | Rejects with 400 if below |
 | `allowedTypes` | `AllowedFileType[]` | any | See [Type matching](#type-matching) |
 | `required` | `boolean` | `true` | When `false`, `c.file` may be `undefined` |
@@ -99,6 +99,17 @@ arrive, it's the empty array — never `undefined`.
 
 ---
 
+## Body size
+
+Every route caps its request body before parsing it (route config
+`bodyLimit`, default 1 MiB; 413 `PAYLOAD_TOO_LARGE`). An upload route's
+default is its declared size, plus 64 KiB for the other fields, when that is
+larger: `files.totalMaxSize`, else `files.maxSize × files.maxCount`, else
+`file.maxSize`. A route that declares no size stays at 1 MiB; set
+`.config({ bodyLimit: 50 * 1024 * 1024 })` for bigger uploads. The per-file
+checks below run after the body is in memory, so the body limit is what
+protects the server's memory.
+
 ## Type matching
 
 `allowedTypes` accepts three matcher shapes; you can mix them:
@@ -120,7 +131,10 @@ allowedTypes: ["image/*", ".gif"]                 // any image + GIF by extensio
 allowedTypes: ["application/pdf", "text/plain"]   // docs only
 ```
 
-A failed match produces a 415 (`UNSUPPORTED_MEDIA_TYPE`) error envelope.
+A failed match is a 400 `VALIDATION_ERROR` whose `data.files` lists a
+`file_type_not_allowed` issue. Both the type and the name are what the client
+sent; the bytes aren't inspected, so treat `allowedTypes` as a filter, not a
+security check.
 
 ---
 
@@ -230,9 +244,8 @@ a JSON error envelope:
 
 | Status | Cause |
 |---|---|
-| `400` | Required file missing, file count below `minCount`, file count above `maxCount`, size below `minSize` |
-| `413` | File above `maxSize` or total above `totalMaxSize` |
-| `415` | File type not in `allowedTypes` |
+| `400` | `VALIDATION_ERROR`, with one issue per problem in `data.files`: `file_missing`, `too_many_files`, `too_few_files`, `file_too_large`, `file_too_small`, `files_total_too_large`, `file_type_not_allowed` |
+| `413` | `PAYLOAD_TOO_LARGE`: the whole body is above the route's `bodyLimit` (see [Body size](#body-size)) |
 
 The handler is not invoked when validation fails.
 

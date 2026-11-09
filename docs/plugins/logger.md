@@ -80,8 +80,9 @@ Useful when you only care about completed requests + their status.
 
 - `METHOD` — HTTP method.
 - `PATH` — `c.req.path` (no query string).
-- `CLIENT_IP` — resolved from `x-forwarded-for` (first entry) →
-  `x-real-ip` → `cf-connecting-ip`, falling back to `"unknown"`.
+- `CLIENT_IP` — the socket's peer address, or with `trustProxy` the client
+  address from `x-forwarded-for` (same rules as the rate limiter's
+  `trustProxy`), falling back to `"unknown"`.
 - `USER_AGENT` — `User-Agent` header verbatim (or `"unknown"`).
 
 ### `[RESPONSE]` line — normal case
