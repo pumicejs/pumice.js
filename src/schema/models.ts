@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ModelDefinition } from "../types/model.js";
 import { isZodObjectSchema, isZodVoidSchema } from "./guards.js";
+import type { SchemaIo } from "./json-schema.js";
 
 /**
  * What a model name must look like: a type name in generated code, and a
@@ -25,21 +26,34 @@ type ObjectModel = {
 };
 
 /**
- * Whether two objects treat keys they don't declare the same way. In output
- * mode, which the manifests use, strip (the default) and strict both write
- * `additionalProperties: false`.
+ * Whether two objects write the keys they don't declare the same way in `io`
+ * mode: both strip them, both reject them (`.strict()`), or both check them
+ * against the same schema. In output mode stripping and rejecting are alike
+ * too: both write `additionalProperties: false`.
  */
-function treatUndeclaredKeysAlike(a: z.ZodObject, b: z.ZodObject): boolean {
+function treatUndeclaredKeysAlike(
+  a: z.ZodObject,
+  b: z.ZodObject,
+  io: SchemaIo,
+): boolean {
+  const isStrict = (catchall: z.core.$ZodType | undefined) =>
+    catchall?._zod.def.type === "never";
   const isClosed = (catchall: z.core.$ZodType | undefined) =>
-    catchall === undefined || catchall._zod.def.type === "never";
+    catchall === undefined || isStrict(catchall);
   const aCatchall = a._zod.def.catchall;
   const bCatchall = b._zod.def.catchall;
   return (
-    (isClosed(aCatchall) && isClosed(bCatchall)) || aCatchall === bCatchall
+    aCatchall === bCatchall ||
+    (isStrict(aCatchall) && isStrict(bCatchall)) ||
+    (io === "output" && isClosed(aCatchall) && isClosed(bCatchall))
   );
 }
 
-/** Two objects whose JSON Schema is the same, because they share every property schema. */
+/**
+ * Two objects whose JSON Schema is the same, because they share every
+ * property schema. Judged in output mode, where a strip and a strict object
+ * look alike too, so a response built from either couldn't be told apart.
+ */
 function haveSameShape(a: z.ZodTypeAny, b: z.ZodTypeAny): boolean {
   if (!isZodObjectSchema(a) || !isZodObjectSchema(b)) {
     return false;
@@ -52,7 +66,7 @@ function haveSameShape(a: z.ZodTypeAny, b: z.ZodTypeAny): boolean {
     keys.every(
       (key) => Object.hasOwn(bShape, key) && aShape[key] === bShape[key],
     ) &&
-    treatUndeclaredKeysAlike(a, b)
+    treatUndeclaredKeysAlike(a, b, "output")
   );
 }
 
@@ -99,12 +113,20 @@ export function assertModelDefinitions(
 }
 
 /**
- * Zod's global metadata, plus `id: <name>` on every declared schema. With it,
- * `toJSONSchema` writes each use of a model (direct, nested, nullable, in a
- * union, a `.describe()` of it, recursive) as a ref into `$defs/<name>`.
+ * Zod's global metadata, plus `id: <name>` on every schema of `models`. With
+ * it, `toJSONSchema` writes each use of a model (direct, nested, nullable, in
+ * a union, a `.describe()` of it, recursive) as a ref into `$defs/<name>`.
  */
 class ModelMetadataRegistry extends z.core.$ZodRegistry<z.core.GlobalMeta> {
-  public constructor(private readonly models: ModelRegistry) {
+  /**
+   * @param models The models refs may point at.
+   * @param declared Every declared model: `models`, or the registry `models`
+   *   is a subset of.
+   */
+  public constructor(
+    private readonly models: ModelRegistry,
+    private readonly declared: ModelRegistry,
+  ) {
     super();
   }
 
@@ -112,13 +134,22 @@ class ModelMetadataRegistry extends z.core.$ZodRegistry<z.core.GlobalMeta> {
     schema: TSchema,
   ): z.core.$replace<z.core.GlobalMeta, TSchema> | undefined {
     const meta = z.globalRegistry.get(schema);
-    const name = this.models.nameOf(schema);
+    const name = this.declared.nameOf(schema);
     if (name !== undefined) {
-      return { ...meta, id: name };
+      if (this.models.has(name)) {
+        return { ...meta, id: name };
+      }
+      // A model refs may not point at is written in full, whatever id it has.
+      if (meta === undefined) {
+        return undefined;
+      }
+      const { id: _id, ...rest } = meta;
+      return rest;
     }
     // Lifting `$defs/<name>` into `#/models/<name>` would otherwise point this
-    // schema at the model.
-    if (meta?.id !== undefined && this.models.has(meta.id)) {
+    // schema at the model. Checked against every declared name, so the same
+    // schema fails wherever it is used.
+    if (meta?.id !== undefined && this.declared.has(meta.id)) {
       throw new Error(
         `A schema with .meta({ id: "${meta.id}" }) isn't the declared model "${meta.id}"; rename the id or the model.`,
       );
@@ -142,9 +173,20 @@ export class ModelRegistry {
   /** Object models with at least one property, in declaration order. */
   private readonly objectModels: ObjectModel[] = [];
 
+  /** Every declared model: this registry, or the one it is a subset of. */
+  private readonly source: ModelRegistry;
+
   /** The metadata registry to pass to `toJSONSchema`. */
-  public readonly metadata: z.core.$ZodRegistry<z.core.GlobalMeta> =
-    new ModelMetadataRegistry(this);
+  public readonly metadata: z.core.$ZodRegistry<z.core.GlobalMeta>;
+
+  /**
+   * @param source Only for a {@link subset}: the registry it is taken from,
+   *   whose names stay taken.
+   */
+  public constructor(source?: ModelRegistry) {
+    this.source = source ?? this;
+    this.metadata = new ModelMetadataRegistry(this, this.source);
+  }
 
   /** Every declared model, in declaration order. */
   public get definitions(): readonly ModelDefinition[] {
@@ -155,16 +197,36 @@ export class ModelRegistry {
   public add(definitions: readonly ModelDefinition[], where: string): void {
     assertModelDefinitions(this.declared, definitions, where);
     for (const definition of definitions) {
-      this.declared.push(definition);
-      this.names.add(definition.name);
-      this.nameBySchema.set(definition.schema, definition.name);
-      const { schema } = definition;
-      if (isZodObjectSchema(schema)) {
-        const keys = Object.keys(schema._zod.def.shape);
-        // An empty object would be the base of every object.
-        if (keys.length > 0) {
-          this.objectModels.push({ name: definition.name, schema, keys });
-        }
+      this.declare(definition);
+    }
+  }
+
+  /**
+   * The models named in `names`, as a registry of their own: what a
+   * serialization that may point at no others is given. The rest are written
+   * as if they weren't declared, but their names can't be taken by
+   * `.meta({ id })` there either.
+   */
+  public subset(names: ReadonlySet<string>): ModelRegistry {
+    const subset = new ModelRegistry(this.source);
+    for (const definition of this.declared) {
+      if (names.has(definition.name)) {
+        subset.declare(definition);
+      }
+    }
+    return subset;
+  }
+
+  private declare(definition: ModelDefinition): void {
+    this.declared.push(definition);
+    this.names.add(definition.name);
+    this.nameBySchema.set(definition.schema, definition.name);
+    const { schema } = definition;
+    if (isZodObjectSchema(schema)) {
+      const keys = Object.keys(schema._zod.def.shape);
+      // An empty object would be the base of every object.
+      if (keys.length > 0) {
+        this.objectModels.push({ name: definition.name, schema, keys });
       }
     }
   }
@@ -184,16 +246,20 @@ export class ModelRegistry {
    *
    * - Every property of the model, as the same schema objects (which
    *   `.extend()`, `.safeExtend()`, `.merge()`, `.pick()` and spreading
-   *   `.shape` keep), and the same handling of undeclared keys: the object is
-   *   that model when it has nothing else, and extends it otherwise. The
-   *   largest such model wins; ties go to the one declared first.
+   *   `.shape` keep), and the same handling of undeclared keys in `io` mode:
+   *   the object is that model when it has nothing else, and extends it
+   *   otherwise. The largest such model wins; ties go to the one declared
+   *   first.
    * - A larger model whose properties are all present but not all the same
    *   (`Image.extend({ size: z.string() })`) overrides it rather than adding
    *   to a smaller one, so the object stays inline.
    * - Declared models themselves are never anyone's extension: a model's body
    *   is written in full.
    */
-  public extensionOf(schema: z.core.$ZodType): ModelExtension | undefined {
+  public extensionOf(
+    schema: z.core.$ZodType,
+    io: SchemaIo,
+  ): ModelExtension | undefined {
     if (!isZodObjectSchema(schema) || this.nameBySchema.has(schema)) {
       return undefined;
     }
@@ -207,7 +273,7 @@ export class ModelRegistry {
       const modelShape = model.schema._zod.def.shape;
       const isSuperset =
         model.keys.every((key) => shape[key] === modelShape[key]) &&
-        treatUndeclaredKeysAlike(schema, model.schema);
+        treatUndeclaredKeysAlike(schema, model.schema, io);
       if (!isSuperset) {
         largestOverridden = Math.max(largestOverridden, model.keys.length);
       } else if (base === undefined || model.keys.length > base.keys.length) {

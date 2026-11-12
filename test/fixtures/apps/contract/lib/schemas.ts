@@ -1,10 +1,14 @@
 import { z } from "pumice.js";
 
+// The same in what a client sends and what the server sends, so request parts
+// point at it too.
+export const Role = z.enum(["admin", "member"]);
+
 export const User = z.object({
   id: z.string().describe("Stable user id"),
   name: z.string(),
   email: z.email(),
-  role: z.enum(["admin", "member"]),
+  role: Role,
   createdAt: z.date(),
   bio: z.string().nullable(),
   tags: z.array(z.string()),
@@ -27,9 +31,10 @@ export const Category = z.object({
   },
 });
 
+// A default in what the server sends: always there, so required.
 export const Job = z.object({
   id: z.string(),
-  state: z.enum(["queued", "running", "done"]),
+  state: z.enum(["queued", "running", "done"]).default("queued"),
 });
 
 export const Health = z.object({ status: z.literal("ok") });

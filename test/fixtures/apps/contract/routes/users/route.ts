@@ -1,5 +1,5 @@
 import { z } from "pumice.js";
-import { User } from "../../lib/schemas.js";
+import { Role, User } from "../../lib/schemas.js";
 import { server } from "../../server.js";
 
 server
@@ -10,7 +10,7 @@ server
   .query(
     z.object({
       page: z.number().int().min(1).default(1),
-      role: z.enum(["admin", "member"]).optional(),
+      role: Role.optional(),
     }),
   )
   .response(z.array(User))
@@ -25,11 +25,13 @@ server
       ],
     },
   })
+  // Request parts in input mode: `email` is the string a client sends, `role`
+  // is optional because of its default.
   .body(
     z.object({
       name: z.string().min(1),
-      email: z.email(),
-      role: z.enum(["admin", "member"]).default("member"),
+      email: z.email().transform((email) => email.toLowerCase()),
+      role: Role.default("member"),
     }),
   )
   .response({ 201: User })

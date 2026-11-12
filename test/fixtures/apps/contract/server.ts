@@ -11,6 +11,7 @@ import {
   Health,
   Job,
   PartialUser,
+  Role,
   User,
 } from "./lib/schemas.js";
 
@@ -33,6 +34,7 @@ export const server = new Server({ rootDir: import.meta.dirname })
       schema: Category,
       description: "A category and its subcategories.",
     },
+    { name: "Role", schema: Role, description: "What a user may do." },
     // Only POST /admin/jobs returns it, which the docs hide.
     { name: "Job", schema: Job, description: "A background job." },
     // Only GET /health returns it, which the client manifest leaves out.

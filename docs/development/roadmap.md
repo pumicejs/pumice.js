@@ -38,6 +38,12 @@ A PR that builds an entry moves it to "Done"; one that finds something new adds 
   serializer's `z.lazy()` root and the dropped `id` for older zod are gone: one path, the one CI
   tests. `test/models.test.ts` passes on 4.5.0 and 4.6.7; the contract fixtures stay pinned to
   the lockfile's version. Breaking for apps on zod 4.3 or 4.4, so with 0.2.0.
+- 2026-11-12, `fix/request-schemas-input-mode`: the manifests describe request parts (body,
+  query, headers, params) in zod's input mode, responses and throws in output mode (REVIEW
+  §1.10). A request part points at a model only where the model's input-mode JSON is its body;
+  a plain `z.object()` never is, so it is written in full there. Still `/@client` 4 and `/@docs`
+  2, since neither was released: one breaking release with models. Next, in client: drop the
+  `default` workaround for v4 manifests (its REVIEW §6.3).
 
 ## Bugs
 
@@ -79,16 +85,6 @@ once in `Server`. Small. **Trigger:** next pipeline change. Test: `plugins.test.
 
 Collect the headers on the context and apply them in one place to whatever response leaves the
 pipeline. **Trigger:** with §1.7 (same place). Test: `ratelimit.test.ts`.
-
-### The manifest describes request bodies in output mode (REVIEW §1.10) — high
-
-`toJSONSchema(…, { io: "input" })` for body, query, headers and params; output for responses and
-throws. A contract change: regenerate the fixtures and drop the client's `default` workaround.
-With models, a request part that uses one points at its output-mode body too; with input mode, a
-part refers to a model only where its input-mode JSON equals the model's, and stays inline
-otherwise (`src/schema/json-schema.ts`). **Trigger:** together with the client and docs fixture
-adoption, ideally in the same 0.2.0 as models so consumers adapt once. Test:
-`contract.test.ts`.
 
 ### The manifest leaves out procedure params and throws (REVIEW §1.11) — medium
 
@@ -175,6 +171,12 @@ plugin that needs a hook.
     a real manifest. Plain `.extend()` keeps working.
   - *Generic models* (`Paginated<T>`): out of scope; a wrapper stays inline per route, with refs
     inside it.
+  - *Input-mode bodies*: a model whose input-mode JSON differs from its body (every plain
+    `z.object()`, anything with a `.default()` or a transform) is written in full in request
+    parts. A second body per model for what clients send (say `models` and `inputModels`) would
+    let them point at it. Additive, but the client would generate two types per model. Leaning:
+    first decide whether a plain `z.object()` may count as its own input body (open question 5).
+    **Trigger:** a generated client whose request types should carry model names.
 
 ## Repository
 
@@ -198,3 +200,11 @@ Each with a leaning; the user decides.
 3. **Upload routes without a declared size** get the 1 MiB default. Leaning: keep it (safe by
    default) and say so in the release notes; the alternative is a higher default for multipart
    only.
+4. **A plain `z.object()` model in request parts.** zod's default object strips unknown keys,
+   which input mode writes as no `additionalProperties` and output mode as `false`. So under the
+   rule "a request part points at a model only where its input-mode JSON is its body", such a
+   model is always written in full in request parts, and most models are plain objects. The
+   alternative: count a stripping object as equal to its body, so the ref stays and tells a
+   client "send no other keys", which is stricter than the server (it drops them) but never
+   wrong for what a client sends. Leaning: the alternative, before 0.2.0 ships, since it changes
+   the fixtures again.

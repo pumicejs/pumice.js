@@ -39,7 +39,11 @@ import {
   type ClientManifestRoutesByPath,
   type FinalizeClientManifestOptions,
 } from "../client-manifest.js";
-import { serializeModels } from "../schema/json-schema.js";
+import {
+  manifestModels,
+  serializeModels,
+  type ManifestModels,
+} from "../schema/json-schema.js";
 import { ModelRegistry } from "../schema/models.js";
 import type { ModelDefinition } from "../types/model.js";
 
@@ -303,6 +307,8 @@ export class RouteManager {
   private readonly models = new ModelRegistry();
   /** The models' bodies, serialized on first use once every model is declared. */
   private modelBodies?: Record<string, ClientManifestJsonSchema>;
+  /** The models each side of a route schema may point at, found with the bodies. */
+  private manifestModels?: ManifestModels;
   private readonly basePathSegments: string[];
   private currentRouteFilePath: string | null = null;
   private currentMiddlewareFilePath: string | null = null;
@@ -347,6 +353,7 @@ export class RouteManager {
     }
     this.models.add(definitions, where);
     this.modelBodies = undefined;
+    this.manifestModels = undefined;
   }
 
   public async registerDiscovered(): Promise<string[]> {
@@ -472,7 +479,7 @@ export class RouteManager {
       urlPath: routePath,
       defaultRouteConfig: this.defaultRouteConfig,
       definition,
-      models: this.models,
+      models: this.getManifestModels(),
     });
 
     logInfo(`Registered ${definition.method.toUpperCase()} ${routePath}`);
@@ -489,13 +496,22 @@ export class RouteManager {
   public getClientManifest(
     options?: FinalizeClientManifestOptions,
   ): ClientManifest {
-    this.modelBodies ??= serializeModels(this.models);
     return finalizeClientManifest(
       this.defaultRouteConfig,
       this.clientManifestRoutesByPath,
-      this.modelBodies,
+      this.getModelBodies(),
       options,
     );
+  }
+
+  private getModelBodies(): Record<string, ClientManifestJsonSchema> {
+    this.modelBodies ??= serializeModels(this.models);
+    return this.modelBodies;
+  }
+
+  private getManifestModels(): ManifestModels {
+    this.manifestModels ??= manifestModels(this.models, this.getModelBodies());
+    return this.manifestModels;
   }
 
   private createValidatedHandler<
