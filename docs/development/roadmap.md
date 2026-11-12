@@ -33,6 +33,11 @@ A PR that builds an entry moves it to "Done"; one that finds something new adds 
   override rule, model bodies in full); `models` in `/@client` v4 and `/@docs` v2, pruned per
   manifest; the contract app and fixtures (`docs/concepts/models.md`). Breaking for consumers,
   so with 0.2.0; client and docs follow in their own PRs.
+- 2026-11-12, `build/zod-4-5`: zod's peer floor is 4.5 (Filip's choice over a CI job on the
+  old floor). zod moves a root schema with an `id` into `$defs` itself from 4.5, so the
+  serializer's `z.lazy()` root and the dropped `id` for older zod are gone: one path, the one CI
+  tests. `test/models.test.ts` passes on 4.5.0 and 4.6.7; the contract fixtures stay pinned to
+  the lockfile's version. Breaking for apps on zod 4.3 or 4.4, so with 0.2.0.
 
 ## Bugs
 
@@ -193,9 +198,3 @@ Each with a leaning; the user decides.
 3. **Upload routes without a declared size** get the 1 MiB default. Leaning: keep it (safe by
    default) and say so in the release notes; the alternative is a higher default for multipart
    only.
-4. **The zod floor for models.** The peer range is `^4.3.6`; CI tests the lockfile's 4.6.7 only.
-   zod moves a root schema with an `id` into `$defs` only from 4.5, and its output differs in
-   other details between versions (nullable primitives, kept `id`s). The serializer puts a model
-   root behind a `z.lazy()` and drops the kept `id`, so models come out the same, and
-   `test/models.test.ts` passed locally on 4.3.6, 4.4.3, 4.5.0 and 4.6.7. Leaning: a CI job that runs `test/models.test.ts` with zod 4.3.6
-   rather than raising the floor; the contract fixtures stay pinned to the lockfile version.

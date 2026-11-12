@@ -188,15 +188,6 @@ function liftModelDefs(
 }
 
 /**
- * `schema` behind a `z.lazy()`, which zod writes as a ref to it. That moves a
- * model into `$defs` even where it is the root: before zod 4.5 a root with an
- * `id` stays in place, and refs back to it are `#`.
- */
-function asDefinition(schema: z.ZodTypeAny): z.ZodTypeAny {
-  return z.lazy(() => schema);
-}
-
-/**
  * A route schema as the manifests carry it: JSON Schema (draft 2020-12,
  * output mode) with `$schema`, refs to declared models as `#/models/<name>`,
  * and any other definitions it needs in its own `$defs`. `z.void()` is
@@ -209,11 +200,9 @@ export function zodToSerializableJsonSchema(
   if (isZodVoidSchema(schema)) {
     return { type: "void" };
   }
-  // Only a model: the lazy root would also move any other recursive root
-  // into `$defs`, and apps without models get the schemas they always got.
-  const root =
-    models.nameOf(schema) === undefined ? schema : asDefinition(schema);
-  const { $defs, ...json } = convert(root, models);
+  // A model at the root is moved into `$defs` by zod itself (4.5 and later,
+  // the peer floor), the root becoming a ref to it.
+  const { $defs, ...json } = convert(schema, models);
   return liftModelDefs(json, isJsonObject($defs) ? $defs : {}, models);
 }
 
@@ -227,15 +216,12 @@ export function serializeModels(
 ): Record<string, ClientManifestJsonSchema> {
   const bodies: Record<string, ClientManifestJsonSchema> = {};
   for (const { name, schema, description } of models.definitions) {
-    const { $defs } = convert(asDefinition(schema), models);
+    const { $defs } = convert(schema, models);
     const defs = isJsonObject($defs) ? $defs : {};
     const body = defs[name];
-    // Before zod 4.5 the definition keeps its `id`, which is the name.
-    const {
-      description: ownDescription,
-      id: _id,
-      ...rest
-    } = isJsonObject(body) ? body : {};
+    const { description: ownDescription, ...rest } = isJsonObject(body)
+      ? body
+      : {};
     const lifted = liftModelDefs(rest, defs, models);
     const text = description ?? ownDescription;
     bodies[name] =

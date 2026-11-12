@@ -47,8 +47,8 @@ API without ceremony.
 npm install pumice.js zod hono
 ```
 
-`zod` and `hono` are peer dependencies, so your app and the framework share
-one copy of each. `pumice.js` re-exports `z` from Zod for convenience.
+`zod` (4.5 or later) and `hono` are peer dependencies, so your app and the
+framework share one copy of each. `pumice.js` re-exports `z` from Zod for convenience.
 Requires Node.js 22 or later.
 
 ---
