@@ -104,11 +104,17 @@ export type {
 } from "./types/procedure.js";
 export type {
   ClientManifest,
+  ClientManifestFile,
+  ClientManifestFiles,
   ClientManifestFramework,
+  ClientManifestJsonSchema,
   ClientManifestMeta,
   ClientManifestMethod,
+  ClientManifestResponse,
   ClientManifestRoute,
   ClientManifestRoutesByPath,
+  ClientManifestSchema,
+  ClientManifestThrowEntry,
   RouteManifestSource,
 } from "./client-manifest.js";
 export { CLIENT_MANIFEST_METHOD_ORDER } from "./client-manifest.js";

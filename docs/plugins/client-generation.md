@@ -155,10 +155,20 @@ import type {
   ClientManifestRoute,
   ClientManifestMethod,
   ClientManifestRoutesByPath,
+  ClientManifestSchema,      // a method's `schema`: body, query, headers, response, throws, file(s)
+  ClientManifestJsonSchema,  // one serialized Zod schema
+  ClientManifestResponse,    // `single` or `statusMap`
+  ClientManifestThrowEntry,  // `schema`, `descriptor` or `codeMap`
+  ClientManifestFile,
+  ClientManifestFiles,
   ClientGenerationRouteConfigExtension,
   ClientManifestGenerationAccess,
 } from "pumice.js";
 ```
+
+Tools that read the manifest can `import type` these from a dev dependency
+on `pumice.js` instead of keeping their own copy, so a change to the shape
+shows up as a type error.
 
 The same `Server.getClientManifest()` method that powers the endpoint is
 public — useful in tests or custom tooling that already has a `Server`

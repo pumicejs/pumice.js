@@ -1,3 +1,7 @@
+import type {
+  ClientManifestJsonSchema,
+  ClientManifestSchema,
+} from "../client-manifest.js";
 import type { RouteMethod } from "./route.js";
 
 /**
@@ -212,9 +216,9 @@ export type DocsManifestRoute = {
    *
    * `undefined` when the route declared no schema.
    */
-  schema?: unknown;
+  schema?: ClientManifestSchema;
   /** Path-params schema serialized as JSON Schema, when present. */
-  params?: unknown;
+  params?: ClientManifestJsonSchema;
   /** Pass-through of `docs.examples`. */
   examples?: DocsRouteExample[];
   /** Source file relative to the server root, for "view source" links. */

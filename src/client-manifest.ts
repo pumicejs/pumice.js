@@ -5,10 +5,12 @@ import { z, toJSONSchema } from "zod";
 import { mergeRouteConfig } from "./config/routes.js";
 import { resolveBodyLimit } from "./http/body-limit.js";
 import type { RouteConfig } from "./types/config.js";
+import type { AllowedFileType } from "./types/file.js";
 import type { RouteBeforeValidationHook, RouteMethod } from "./types/route.js";
 import type {
   RouteParamsSchema,
   RouteSchema,
+  RouteThrowsCodeSchemaMap,
   RouteThrowsSchema,
   RouteResponseSchema,
 } from "./types/schema.js";
@@ -46,7 +48,9 @@ function getIsoDatetimeJsonSchemaFragment(): Record<string, unknown> {
   return isoDatetimeJsonSchemaFragment;
 }
 
-function zodToSerializableJsonSchema(schema: z.ZodTypeAny): unknown {
+function zodToSerializableJsonSchema(
+  schema: z.ZodTypeAny,
+): ClientManifestJsonSchema {
   if (isZodVoidSchema(schema)) {
     return { type: "void" };
   }
@@ -70,7 +74,9 @@ function zodToSerializableJsonSchema(schema: z.ZodTypeAny): unknown {
   );
 }
 
-function serializeThrowStatusEntry(entry: unknown): unknown {
+function serializeThrowStatusEntry(
+  entry: unknown,
+): ClientManifestThrowEntry | undefined {
   if (isZodSchema(entry)) {
     return { kind: "schema", jsonSchema: zodToSerializableJsonSchema(entry) };
   }
@@ -91,28 +97,29 @@ function serializeThrowStatusEntry(entry: unknown): unknown {
   }
 
   if (isThrowsCodeSchemaMap(entry)) {
-    const codes: Record<string, unknown> = {};
-    for (const [code, nested] of Object.entries(entry)) {
-      codes[code] = serializeThrowStatusEntry(nested);
-    }
-    return { kind: "codeMap", codes };
+    return { kind: "codeMap", codes: serializeThrows(entry) };
   }
 
   return undefined;
 }
 
-function serializeThrows(throws: RouteThrowsSchema): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [status, entry] of Object.entries(throws)) {
+/** A `throws` map, keyed by status or, one level down, by business code. */
+function serializeThrows(
+  throws: RouteThrowsSchema | RouteThrowsCodeSchemaMap,
+): Record<string, ClientManifestThrowEntry> {
+  const out: Record<string, ClientManifestThrowEntry> = {};
+  for (const [key, entry] of Object.entries(throws)) {
     const serialized = serializeThrowStatusEntry(entry);
     if (serialized !== undefined) {
-      out[status] = serialized;
+      out[key] = serialized;
     }
   }
   return out;
 }
 
-function serializeResponse(response: RouteResponseSchema): unknown {
+function serializeResponse(
+  response: RouteResponseSchema,
+): ClientManifestResponse {
   if (isZodSchema(response)) {
     if (isZodVoidSchema(response)) {
       return { shape: "single", type: "void" };
@@ -123,7 +130,7 @@ function serializeResponse(response: RouteResponseSchema): unknown {
     };
   }
 
-  const statuses: Record<string, unknown> = {};
+  const statuses: Record<string, ClientManifestJsonSchema> = {};
   for (const [status, schema] of Object.entries(response)) {
     if (isZodSchema(schema)) {
       statuses[status] = isZodVoidSchema(schema)
@@ -134,12 +141,14 @@ function serializeResponse(response: RouteResponseSchema): unknown {
   return { shape: "statusMap", statuses };
 }
 
-function serializeRouteSchema(schema: RouteSchema | undefined): unknown {
+function serializeRouteSchema(
+  schema: RouteSchema | undefined,
+): ClientManifestSchema | undefined {
   if (!schema || Object.keys(schema).length === 0) {
     return undefined;
   }
 
-  const result: Record<string, unknown> = {};
+  const result: ClientManifestSchema = {};
 
   if (schema.body !== undefined && isZodSchema(schema.body)) {
     result.body = zodToSerializableJsonSchema(schema.body);
@@ -182,7 +191,7 @@ function serializeRouteSchema(schema: RouteSchema | undefined): unknown {
 
 function serializeRouteParams(
   paramsSchema: RouteParamsSchema | undefined,
-): unknown {
+): ClientManifestJsonSchema | undefined {
   if (!paramsSchema || !isZodSchema(paramsSchema)) {
     return undefined;
   }
@@ -224,12 +233,74 @@ export type RouteManifestSource = {
   beforeValidationHooks?: RouteBeforeValidationHook<object>[];
 };
 
+/**
+ * A JSON Schema (draft 2020-12) as zod writes it in output mode, with dates as
+ * ISO date-time strings. `z.void()`, which JSON Schema can't express, is
+ * `{ type: "void" }`.
+ */
+export type ClientManifestJsonSchema = Record<string, unknown>;
+
+/** A route's success response: one schema for every 2xx, or one per status. */
+export type ClientManifestResponse =
+  | { shape: "single"; type: "void" }
+  | { shape: "single"; jsonSchema: ClientManifestJsonSchema }
+  | { shape: "statusMap"; statuses: Record<string, ClientManifestJsonSchema> };
+
+/**
+ * One `throws` entry: a payload schema, a descriptor (`message`, `data`,
+ * `issues`), or a map of business codes to either.
+ */
+export type ClientManifestThrowEntry =
+  | { kind: "schema"; jsonSchema: ClientManifestJsonSchema }
+  | {
+      kind: "descriptor";
+      message?: string;
+      data?: ClientManifestJsonSchema;
+      issues?: ClientManifestJsonSchema;
+    }
+  | { kind: "codeMap"; codes: Record<string, ClientManifestThrowEntry> };
+
+/** A `.file()` upload, with its defaults filled in. */
+export type ClientManifestFile = {
+  fieldName: string;
+  maxSize?: number;
+  minSize?: number;
+  allowedTypes?: AllowedFileType[];
+  required: boolean;
+};
+
+/** A `.files()` upload, with its default field name filled in. */
+export type ClientManifestFiles = {
+  fieldName: string;
+  maxSize?: number;
+  minSize?: number;
+  totalMaxSize?: number;
+  allowedTypes?: AllowedFileType[];
+  minCount?: number;
+  maxCount?: number;
+};
+
+/**
+ * One method's contract: the request parts, the success response, the
+ * declared throws (keyed by status) and the uploads. Parts the route didn't
+ * declare are absent.
+ */
+export type ClientManifestSchema = {
+  body?: ClientManifestJsonSchema;
+  query?: ClientManifestJsonSchema;
+  headers?: ClientManifestJsonSchema;
+  response?: ClientManifestResponse;
+  throws?: Record<string, ClientManifestThrowEntry>;
+  file?: ClientManifestFile;
+  files?: ClientManifestFiles;
+};
+
 /** Per-HTTP-method entry under {@link ClientManifestRoute.methods}. */
 export type ClientManifestMethod = {
   descriptor?: string;
   effectiveConfig: Record<string, unknown>;
   beforeValidationHooksCount: number;
-  schema?: unknown;
+  schema?: ClientManifestSchema;
 };
 
 /**
@@ -240,7 +311,7 @@ export type ClientManifestRoute = {
   path: string;
   routeFile: string;
   routeLevelConfig: Record<string, unknown>;
-  params?: unknown;
+  params?: ClientManifestJsonSchema;
   methods: Partial<Record<RouteMethod, ClientManifestMethod>>;
 };
 
@@ -330,7 +401,7 @@ export function appendClientManifestRoute(
       unknown
     >,
     beforeValidationHooksCount: definition.beforeValidationHooks?.length ?? 0,
-    schema: serializeRouteSchema(definition.schema) as unknown,
+    schema: serializeRouteSchema(definition.schema),
   };
 
   const relativeRouteFile = relative(rootDirPath, routeFilePath).replaceAll(
