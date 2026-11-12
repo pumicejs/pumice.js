@@ -13,13 +13,15 @@ Both are wrapped in the success envelope (`{ code, message, data }`).
 
 ## What's in them
 
-The types in `src/client-manifest.ts` and `src/types/docs.ts` are the definition. In words, per
-route: its path (`:param` segments), the route file, the route-level config, the params schema,
-and per method its description, effective config (merged, JSON-serializable keys only, with the
-`bodyLimit` that applies for every method but GET), and schema: `body`, `query`, `headers`
-(JSON Schema), `response` (`single` or `statusMap`, with `{ type: "void" }` for `z.void()`),
-`throws` (`descriptor`, `schema` or `codeMap` per status) and `file` / `files` (their config).
-Dates are ISO strings.
+The types in `src/client-manifest.ts` and `src/types/docs.ts` are the definition, down to the
+serialized schemas (`ClientManifestSchema`, `ClientManifestResponse`, `ClientManifestThrowEntry`),
+and the serializers are typed against them. They are exported, so a consumer can `import type`
+them instead of keeping its own copy. In words, per route: its path (`:param` segments), the
+route file, the route-level config, the params schema, and per method its description, effective
+config (merged, JSON-serializable keys only, with the `bodyLimit` that applies for every method
+but GET), and schema: `body`, `query`, `headers` (JSON Schema), `response` (`single` or
+`statusMap`, with `{ type: "void" }` for `z.void()`), `throws` (`descriptor`, `schema` or
+`codeMap` per status) and `file` / `files` (their config). Dates are ISO strings.
 
 ## The fixtures
 

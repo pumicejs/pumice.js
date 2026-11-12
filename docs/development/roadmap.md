@@ -22,6 +22,12 @@ A PR that builds an entry moves it to "Done"; one that finds something new adds 
   stale `claude/priceless-mccarthy-ed0bd6` branch is deleted.
 - 2026-11-09: the playbook's `api-*` skills corrected (filstawski/playbook#2: `.query()` for the
   search example, a gated client manifest, procedures' statuses in `.throws()`) and updated here.
+- 2026-11-12, `refactor/typed-manifest-schemas`: the manifest's schema fields are typed
+  (`ClientManifestSchema`, `ClientManifestJsonSchema`, `ClientManifestResponse`,
+  `ClientManifestThrowEntry`, `ClientManifestFile(s)`; P§0.1 in `REVIEW-practices.md`), and the
+  serializers are checked against them. Additive; the fixtures didn't change. Next, in client
+  and docs: `import type` them from a dev dependency instead of the hand-written copies (their
+  roadmaps).
 
 ## Bugs
 
