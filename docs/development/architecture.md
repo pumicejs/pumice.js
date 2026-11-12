@@ -78,10 +78,17 @@ the `ModelRegistry` the manager owns; that is why models must be declared before
 registry gives zod a metadata registry that adds `id: <name>` to each declared schema, so zod
 writes every use of it as a `$defs` ref, and an `override` that rewrites an object sharing a
 model's property schemas into a ref or an `allOf` extension. `json-schema.ts` then lifts the
-model definitions out of each schema (`#/$defs/User` → `#/models/User`). The model bodies are
-serialized the same way, once, on the first `getClientManifest()`. Each plugin prunes `models` to
-the routes it serves (`referencedModels()`), which keeps the registry in the core: both manifests
-need it, and the core never imports a plugin.
+model definitions out of each schema (`#/$defs/User` → `#/models/User`).
+
+Responses and throws are serialized in zod's output mode, request parts (body, query, headers,
+params) in input mode. The model bodies are output mode, serialized the same way, once, when the
+first route registers (or on the first `getClientManifest()` without routes). Request parts are
+given a subset of the registry (`ModelRegistry.subset()`): the models whose input-mode JSON is
+their body, found by `manifestModels()` by dropping the ones that differ until none does, since a
+model written in full can change the JSON of one that contains it. The others are as if
+undeclared there. Each plugin prunes `models` to the routes it serves (`referencedModels()`),
+which keeps the registry in the core: both manifests need it, and the core never imports a
+plugin.
 
 ## Import boundaries
 

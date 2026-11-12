@@ -23,17 +23,17 @@ import {
   MODEL_REF_PREFIX,
   reachableRefs,
   zodToSerializableJsonSchema,
+  type ManifestModels,
 } from "./schema/json-schema.js";
-import type { ModelRegistry } from "./schema/models.js";
 
 function serializeThrowStatusEntry(
   entry: unknown,
-  models: ModelRegistry,
+  models: ManifestModels,
 ): ClientManifestThrowEntry | undefined {
   if (isZodSchema(entry)) {
     return {
       kind: "schema",
-      jsonSchema: zodToSerializableJsonSchema(entry, models),
+      jsonSchema: zodToSerializableJsonSchema(entry, models, "output"),
     };
   }
 
@@ -43,11 +43,11 @@ function serializeThrowStatusEntry(
       message: entry.message,
       data:
         entry.data !== undefined
-          ? zodToSerializableJsonSchema(entry.data, models)
+          ? zodToSerializableJsonSchema(entry.data, models, "output")
           : undefined,
       issues:
         entry.issues !== undefined
-          ? zodToSerializableJsonSchema(entry.issues, models)
+          ? zodToSerializableJsonSchema(entry.issues, models, "output")
           : undefined,
     };
   }
@@ -62,7 +62,7 @@ function serializeThrowStatusEntry(
 /** A `throws` map, keyed by status or, one level down, by business code. */
 function serializeThrows(
   throws: RouteThrowsSchema | RouteThrowsCodeSchemaMap,
-  models: ModelRegistry,
+  models: ManifestModels,
 ): Record<string, ClientManifestThrowEntry> {
   const out: Record<string, ClientManifestThrowEntry> = {};
   for (const [key, entry] of Object.entries(throws)) {
@@ -76,7 +76,7 @@ function serializeThrows(
 
 function serializeResponse(
   response: RouteResponseSchema,
-  models: ModelRegistry,
+  models: ManifestModels,
 ): ClientManifestResponse {
   if (isZodSchema(response)) {
     if (isZodVoidSchema(response)) {
@@ -84,7 +84,7 @@ function serializeResponse(
     }
     return {
       shape: "single",
-      jsonSchema: zodToSerializableJsonSchema(response, models),
+      jsonSchema: zodToSerializableJsonSchema(response, models, "output"),
     };
   }
 
@@ -93,7 +93,7 @@ function serializeResponse(
     if (isZodSchema(schema)) {
       statuses[status] = isZodVoidSchema(schema)
         ? { type: "void" }
-        : zodToSerializableJsonSchema(schema, models);
+        : zodToSerializableJsonSchema(schema, models, "output");
     }
   }
   return { shape: "statusMap", statuses };
@@ -101,7 +101,7 @@ function serializeResponse(
 
 function serializeRouteSchema(
   schema: RouteSchema | undefined,
-  models: ModelRegistry,
+  models: ManifestModels,
 ): ClientManifestSchema | undefined {
   if (!schema || Object.keys(schema).length === 0) {
     return undefined;
@@ -110,13 +110,17 @@ function serializeRouteSchema(
   const result: ClientManifestSchema = {};
 
   if (schema.body !== undefined && isZodSchema(schema.body)) {
-    result.body = zodToSerializableJsonSchema(schema.body, models);
+    result.body = zodToSerializableJsonSchema(schema.body, models, "input");
   }
   if (schema.query !== undefined && isZodSchema(schema.query)) {
-    result.query = zodToSerializableJsonSchema(schema.query, models);
+    result.query = zodToSerializableJsonSchema(schema.query, models, "input");
   }
   if (schema.headers !== undefined && isZodSchema(schema.headers)) {
-    result.headers = zodToSerializableJsonSchema(schema.headers, models);
+    result.headers = zodToSerializableJsonSchema(
+      schema.headers,
+      models,
+      "input",
+    );
   }
   if (schema.response !== undefined) {
     result.response = serializeResponse(schema.response, models);
@@ -150,13 +154,13 @@ function serializeRouteSchema(
 
 function serializeRouteParams(
   paramsSchema: RouteParamsSchema | undefined,
-  models: ModelRegistry,
+  models: ManifestModels,
 ): ClientManifestJsonSchema | undefined {
   if (!paramsSchema || !isZodSchema(paramsSchema)) {
     return undefined;
   }
 
-  return zodToSerializableJsonSchema(paramsSchema, models);
+  return zodToSerializableJsonSchema(paramsSchema, models, "input");
 }
 
 /** Order used when serializing {@link ClientManifestRoute.methods}. */
@@ -194,9 +198,12 @@ export type RouteManifestSource = {
 };
 
 /**
- * A JSON Schema (draft 2020-12) as zod writes it in output mode, with dates as
- * ISO date-time strings. `z.void()`, which JSON Schema can't express, is
- * `{ type: "void" }`.
+ * A JSON Schema (draft 2020-12) as zod writes it, with dates as ISO date-time
+ * strings: in input mode for what a client sends (body, query, headers,
+ * params), so a field with a `.default()` is optional and a transform is the
+ * type it accepts, and in output mode for what the server sends (responses,
+ * throws) and for model bodies. `z.void()`, which JSON Schema can't express,
+ * is `{ type: "void" }`.
  *
  * A `$ref` that starts with `#/models/` names an entry of the manifest's
  * top-level `models`; any other `#/…` ref (`#/$defs/__schema0`) points into
@@ -340,7 +347,7 @@ export function appendClientManifestRoute(
     urlPath: string;
     defaultRouteConfig: RouteConfig<object>;
     definition: RouteManifestSource;
-    models: ModelRegistry;
+    models: ManifestModels;
   },
 ): void {
   const {

@@ -89,6 +89,7 @@ describe("ClientGenerationPlugin", () => {
       "PartialUser",
       "Board",
       "Category",
+      "Role",
       "Job",
     ]);
   });
@@ -112,18 +113,30 @@ describe("ClientGenerationPlugin", () => {
     expect(users.methods.get.effectiveConfig).not.toHaveProperty("bodyLimit");
   });
 
-  it.fails(
-    "describes request bodies as the client sends them, so defaults are optional (REVIEW §1.10)",
-    () => {
-      const users = clientManifest.routes.find(
-        (route: { path: string }) => route.path === "/users",
-      );
-      expect(users.methods.post.schema.body.required).toEqual([
-        "name",
-        "email",
-      ]);
-    },
-  );
+  it("describes request parts as the client sends them (REVIEW §1.10)", () => {
+    const users = clientManifest.routes.find(
+      (route: { path: string }) => route.path === "/users",
+    );
+    const { body } = users.methods.post.schema;
+    // `role` has a default, so a client may leave it out.
+    expect(body.required).toEqual(["name", "email"]);
+    expect(body.properties.role).toEqual({
+      default: "member",
+      $ref: "#/models/Role",
+    });
+    // A transform is the type it accepts, not the `{}` of its output.
+    expect(body.properties.email).toMatchObject({
+      type: "string",
+      format: "email",
+    });
+    // The object strips undeclared keys; it doesn't reject them.
+    expect(body).not.toHaveProperty("additionalProperties");
+    expect(users.methods.get.schema.query).not.toHaveProperty("required");
+    // What the server sends stays in output mode: a default is always sent.
+    expect(clientManifest.models.Job.required).toEqual(["id", "state"]);
+    expect(clientManifest.models.Job.properties.state.default).toBe("queued");
+    expect(clientManifest.models.Job.additionalProperties).toBe(false);
+  });
 
   it.fails("includes the params a procedure contributes (REVIEW §1.11)", () => {
     const user = clientManifest.routes.find(
@@ -213,6 +226,7 @@ describe("DocsPlugin", () => {
       "PartialUser",
       "Board",
       "Category",
+      "Role",
       "Health",
     ]);
   });

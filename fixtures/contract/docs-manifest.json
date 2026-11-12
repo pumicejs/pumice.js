@@ -41,11 +41,7 @@
           "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
         },
         "role": {
-          "type": "string",
-          "enum": [
-            "admin",
-            "member"
-          ]
+          "$ref": "#/models/Role"
         },
         "createdAt": {
           "type": "string",
@@ -140,6 +136,14 @@
         "children"
       ],
       "additionalProperties": false
+    },
+    "Role": {
+      "description": "What a user may do.",
+      "type": "string",
+      "enum": [
+        "admin",
+        "member"
+      ]
     },
     "Health": {
       "type": "object",
@@ -246,11 +250,7 @@
                   "minimum": -9007199254740991,
                   "maximum": 100
                 }
-              },
-              "required": [
-                "page"
-              ],
-              "additionalProperties": false
+              }
             },
             "response": {
               "shape": "single",
@@ -295,8 +295,7 @@
             "required": [
               "orgId",
               "boardId"
-            ],
-            "additionalProperties": false
+            ]
           },
           "routeFile": "routes/orgs/[orgId]/boards/[boardId]/route.ts"
         },
@@ -317,8 +316,7 @@
               },
               "required": [
                 "title"
-              ],
-              "additionalProperties": false
+              ]
             },
             "response": {
               "shape": "single",
@@ -341,8 +339,7 @@
             "required": [
               "orgId",
               "boardId"
-            ],
-            "additionalProperties": false
+            ]
           },
           "routeFile": "routes/orgs/[orgId]/boards/[boardId]/route.ts"
         },
@@ -367,11 +364,7 @@
                   "minimum": -9007199254740991,
                   "maximum": 100
                 }
-              },
-              "required": [
-                "page"
-              ],
-              "additionalProperties": false
+              }
             },
             "response": {
               "shape": "single",
@@ -387,11 +380,7 @@
                       "type": "object",
                       "properties": {
                         "role": {
-                          "type": "string",
-                          "enum": [
-                            "admin",
-                            "member"
-                          ]
+                          "$ref": "#/models/Role"
                         }
                       },
                       "required": [
@@ -460,19 +449,13 @@
                 },
                 "role": {
                   "default": "member",
-                  "type": "string",
-                  "enum": [
-                    "admin",
-                    "member"
-                  ]
+                  "$ref": "#/models/Role"
                 }
               },
               "required": [
                 "name",
-                "email",
-                "role"
-              ],
-              "additionalProperties": false
+                "email"
+              ]
             },
             "response": {
               "shape": "statusMap",
@@ -550,8 +533,7 @@
                 "x-request-id": {
                   "type": "string"
                 }
-              },
-              "additionalProperties": false
+              }
             },
             "response": {
               "shape": "single",
@@ -625,17 +607,9 @@
                   "maximum": 9007199254740991
                 },
                 "role": {
-                  "type": "string",
-                  "enum": [
-                    "admin",
-                    "member"
-                  ]
+                  "$ref": "#/models/Role"
                 }
-              },
-              "required": [
-                "page"
-              ],
-              "additionalProperties": false
+              }
             },
             "response": {
               "shape": "single",
@@ -684,11 +658,9 @@
                       "required": [
                         "x",
                         "y"
-                      ],
-                      "additionalProperties": false
+                      ]
                     }
-                  },
-                  "additionalProperties": false
+                  }
                 },
                 "response": {
                   "shape": "single",
@@ -733,8 +705,7 @@
                     "alt": {
                       "type": "string"
                     }
-                  },
-                  "additionalProperties": false
+                  }
                 },
                 "response": {
                   "shape": "statusMap",
@@ -775,8 +746,7 @@
                 },
                 "required": [
                   "userId"
-                ],
-                "additionalProperties": false
+                ]
               },
               "routeFile": "routes/users/[userId]/avatar/route.ts"
             },
@@ -825,8 +795,7 @@
                 },
                 "required": [
                   "userId"
-                ],
-                "additionalProperties": false
+                ]
               },
               "routeFile": "routes/users/[userId]/photos/route.ts"
             }

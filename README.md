@@ -648,7 +648,9 @@ client prepended is ignored. Requests without a known address (for example
 ### `ClientGenerationPlugin`
 
 Serves a filtered JSON manifest of every route at `GET /@client` (path
-configurable) for codegen tooling. Schemas are emitted as JSON Schema.
+configurable) for codegen tooling. Schemas are emitted as JSON Schema: request
+parts as a client sends them (a `.default()` field is optional), responses and
+throws as the server sends them.
 
 ```ts
 import { ClientGenerationPlugin } from "pumice.js";

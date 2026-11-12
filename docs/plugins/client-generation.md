@@ -189,8 +189,18 @@ instance handy.
 
 ## How Zod becomes JSON Schema
 
-The plugin uses Zod's built-in `toJSONSchema(schema, { unrepresentable: "any" })`
-(output mode) with three tweaks:
+The plugin uses Zod's built-in `toJSONSchema(schema, { unrepresentable: "any" })`,
+in the mode that matches who sends the value:
+
+- **Request parts** (`body`, `query`, `headers`, `params`) use `io: "input"`,
+  what a client sends. A field with a `.default()` is optional, a transform is
+  the type it accepts (`z.string().transform(Number)` is a string), and an
+  object that strips unknown keys (Zod's default) has no
+  `additionalProperties: false`.
+- **Responses, throws and model bodies** use output mode, what the server
+  sends: a defaulted field is always there, so it's required.
+
+On top of that, three tweaks:
 
 1. **`z.date()` / `z.coerce.date()`** are emitted as the JSON Schema for
    `z.iso.datetime()` (since "date" has no first-class JSON Schema). This
@@ -199,7 +209,9 @@ The plugin uses Zod's built-in `toJSONSchema(schema, { unrepresentable: "any" })
 2. **`z.void()`** is emitted as `{ "type": "void" }` so client codegen can
    distinguish "empty body" from "any unknown body".
 3. **Declared models** become refs into the manifest's `models`
-   ([Models](../concepts/models.md)).
+   ([Models](../concepts/models.md)). Model bodies are output mode, so a
+   request part points at a model only where the model's input-mode JSON is
+   the same, and writes it in full otherwise.
 
 For `BigInt` values that show up in `default` / `example` fields, they're
 JSON-serialized as strings (since JSON has no `BigInt`).

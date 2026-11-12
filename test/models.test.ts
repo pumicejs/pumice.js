@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { Server, ServerBuilder, z, type ModelDefinition } from "pumice.js";
 import {
+  manifestModels,
   serializeModels,
   zodToSerializableJsonSchema,
 } from "../src/schema/json-schema.js";
@@ -49,8 +50,10 @@ models.add(
   "test",
 );
 
+const sides = manifestModels(models, serializeModels(models));
+
 const serialize = (schema: z.ZodTypeAny) =>
-  zodToSerializableJsonSchema(schema, models);
+  zodToSerializableJsonSchema(schema, sides, "output");
 
 const userJson = {
   type: "object",
@@ -377,6 +380,166 @@ describe("model bodies", () => {
         },
       },
     });
+  });
+});
+
+describe("a model in a request part (input mode)", () => {
+  // Strict, so a client sends exactly its body.
+  const Address = z.object({ street: z.string(), city: z.string() }).strict();
+  // A default is optional in what a client sends, required in what it gets.
+  const Settings = z
+    .object({ theme: z.enum(["light", "dark"]).default("light") })
+    .strict();
+  // Strips undeclared keys (zod's default): no `additionalProperties: false`
+  // in input mode.
+  const Contact = z.object({ email: z.string() }).meta({ id: "Contact" });
+  // A transform is its input type in input mode.
+  const Cents = z.string().transform(Number);
+  // Differs because a model in it does.
+  const Order = z.object({ shipTo: Address, settings: Settings }).strict();
+
+  const requestModels = new ModelRegistry();
+  requestModels.add(
+    [
+      { name: "Address", schema: Address },
+      { name: "Settings", schema: Settings },
+      { name: "Contact", schema: Contact },
+      { name: "Cents", schema: Cents },
+      { name: "Order", schema: Order },
+      { name: "Visibility", schema: Visibility },
+    ],
+    "test",
+  );
+  const requestSides = manifestModels(
+    requestModels,
+    serializeModels(requestModels),
+  );
+  const serializeRequest = (schema: z.ZodTypeAny) =>
+    zodToSerializableJsonSchema(schema, requestSides, "input");
+  const serializeResponse = (schema: z.ZodTypeAny) =>
+    zodToSerializableJsonSchema(schema, requestSides, "output");
+
+  const themeJson = {
+    default: "light",
+    type: "string",
+    enum: ["light", "dark"],
+  };
+  const settingsJson = {
+    type: "object",
+    properties: { theme: themeJson },
+    additionalProperties: false,
+  };
+
+  it("points only at the models whose input-mode JSON is their body", () => {
+    expect(requestSides.input.definitions.map(({ name }) => name)).toEqual([
+      "Address",
+      "Visibility",
+    ]);
+    expect(requestSides.output).toBe(requestModels);
+  });
+
+  it("is a ref where the input-mode JSON is the body, a default beside it", () => {
+    expect(serializeRequest(Address)).toEqual({
+      $schema: SCHEMA,
+      ...ref("Address"),
+    });
+    const query = z.object({
+      shipTo: Address,
+      visibility: Visibility.default("public"),
+    });
+    expect(serializeRequest(query)).toEqual({
+      $schema: SCHEMA,
+      type: "object",
+      properties: {
+        shipTo: ref("Address"),
+        visibility: { default: "public", ...ref("Visibility") },
+      },
+      required: ["shipTo"],
+    });
+  });
+
+  it.each<[string, z.ZodTypeAny, Record<string, unknown>]>([
+    ["a .default() inside", Settings, settingsJson],
+    [
+      "an object that strips undeclared keys, whatever id it carries",
+      Contact,
+      {
+        type: "object",
+        properties: { email: { type: "string" } },
+        required: ["email"],
+      },
+    ],
+    ["a transform", Cents, { type: "string" }],
+    [
+      "a model inside that differs",
+      Order,
+      {
+        type: "object",
+        properties: { shipTo: ref("Address"), settings: settingsJson },
+        required: ["shipTo", "settings"],
+        additionalProperties: false,
+      },
+    ],
+  ])("is written in full where it differs: %s", (_label, schema, expected) => {
+    expect(serializeRequest(schema)).toEqual({ $schema: SCHEMA, ...expected });
+  });
+
+  it("is still a ref in what the server sends, to the output-mode body", () => {
+    expect(serializeResponse(Settings)).toEqual({
+      $schema: SCHEMA,
+      ...ref("Settings"),
+    });
+    expect(serializeModels(requestModels).Settings).toEqual({
+      ...settingsJson,
+      required: ["theme"],
+    });
+  });
+
+  it("extends a model where the input-mode JSON is its body", () => {
+    expect(
+      serializeRequest(Address.extend({ note: z.string().default("") })),
+    ).toEqual({
+      $schema: SCHEMA,
+      allOf: [
+        ref("Address"),
+        {
+          type: "object",
+          properties: { note: { default: "", type: "string" } },
+        },
+      ],
+    });
+  });
+
+  it("writes an extension of a model that differs in full", () => {
+    expect(serializeRequest(Settings.extend({ locale: z.string() }))).toEqual({
+      $schema: SCHEMA,
+      type: "object",
+      properties: { theme: themeJson, locale: { type: "string" } },
+      required: ["locale"],
+      additionalProperties: false,
+    });
+  });
+
+  it("tells an object that strips undeclared keys from a strict model", () => {
+    // Output mode writes `additionalProperties: false` for both.
+    const stripping = z.object({ ...Address.shape });
+    expect(serializeResponse(stripping)).toEqual({
+      $schema: SCHEMA,
+      ...ref("Address"),
+    });
+    expect(serializeRequest(stripping)).toEqual({
+      $schema: SCHEMA,
+      type: "object",
+      properties: { street: { type: "string" }, city: { type: "string" } },
+      required: ["street", "city"],
+    });
+  });
+
+  it("rejects a .meta({ id }) with the name of a model it writes in full", () => {
+    const impostor = z.object({ theme: z.number() }).meta({ id: "Settings" });
+    expect(() => serializeRequest(z.array(impostor))).toThrow(
+      `A schema with .meta({ id: "Settings" }) isn't the declared model "Settings"`,
+    );
   });
 });
 

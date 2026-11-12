@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { z, toJSONSchema } from "zod";
 import type { ClientManifestJsonSchema } from "../client-manifest.js";
 import { isZodDateSchema, isZodVoidSchema } from "./guards.js";
@@ -5,6 +6,21 @@ import type { ModelExtension, ModelRegistry } from "./models.js";
 
 /** Where a ref to a declared model points, in both manifests. */
 export const MODEL_REF_PREFIX = "#/models/";
+
+/**
+ * Which side of a zod schema its JSON Schema describes, as zod's `io` option:
+ * `"input"` is what a client sends (a `.default()` is optional, a transform is
+ * the type it accepts), `"output"` what the server sends.
+ */
+export type SchemaIo = "input" | "output";
+
+/**
+ * The models a route schema may point at, by side: in what the server sends
+ * (responses, throws), every declared model; in what a client sends (body,
+ * query, headers, params), only those whose input-mode JSON is their body
+ * ({@link manifestModels}).
+ */
+export type ManifestModels = Readonly<Record<SchemaIo, ModelRegistry>>;
 
 /** Where zod points refs to a schema it moved into the root's `$defs`. */
 const DEFS_REF_PREFIX = "#/$defs/";
@@ -133,8 +149,10 @@ function writeAsModelUse(
 function convert(
   schema: z.ZodTypeAny,
   models: ModelRegistry,
+  io: SchemaIo,
 ): Record<string, unknown> {
   const payload = toJSONSchema(schema, {
+    io,
     metadata: models.metadata,
     unrepresentable: "any",
     override({ zodSchema, jsonSchema }) {
@@ -145,7 +163,7 @@ function convert(
         Object.assign(jsonSchema, getIsoDatetimeJsonSchemaFragment());
         return;
       }
-      const extension = models.extensionOf(zodSchema);
+      const extension = models.extensionOf(zodSchema, io);
       if (extension !== undefined) {
         writeAsModelUse(jsonSchema, extension);
       }
@@ -188,35 +206,85 @@ function liftModelDefs(
 }
 
 /**
- * A route schema as the manifests carry it: JSON Schema (draft 2020-12,
- * output mode) with `$schema`, refs to declared models as `#/models/<name>`,
- * and any other definitions it needs in its own `$defs`. `z.void()` is
- * `{ type: "void" }`.
+ * A route schema as the manifests carry it: JSON Schema (draft 2020-12) of
+ * the `io` side, with `$schema`, refs to the models that side may point at as
+ * `#/models/<name>`, and any other definitions it needs in its own `$defs`.
+ * `z.void()` is `{ type: "void" }`.
  */
 export function zodToSerializableJsonSchema(
   schema: z.ZodTypeAny,
-  models: ModelRegistry,
+  models: ManifestModels,
+  io: SchemaIo,
 ): ClientManifestJsonSchema {
   if (isZodVoidSchema(schema)) {
     return { type: "void" };
   }
+  const registry = models[io];
   // A model at the root is moved into `$defs` by zod itself (4.5 and later,
   // the peer floor), the root becoming a ref to it.
-  const { $defs, ...json } = convert(schema, models);
-  return liftModelDefs(json, isJsonObject($defs) ? $defs : {}, models);
+  const { $defs, ...json } = convert(schema, registry, io);
+  return liftModelDefs(json, isJsonObject($defs) ? $defs : {}, registry);
 }
 
 /**
- * Every declared model's body, in declaration order: its JSON Schema without
- * `$schema`, written in full (a model never extends another), refs to other
- * models (and to itself) as `#/models/<name>`, and its declared description.
+ * Every declared model's body, in declaration order: its output-mode JSON
+ * Schema without `$schema`, written in full (a model never extends another),
+ * refs to other models (and to itself) as `#/models/<name>`, and its declared
+ * description.
  */
 export function serializeModels(
   models: ModelRegistry,
 ): Record<string, ClientManifestJsonSchema> {
+  return serializeBodies(models, "output");
+}
+
+/**
+ * The models a schema may point at on each side, given their bodies
+ * ({@link serializeModels}).
+ *
+ * A model's body is output-mode JSON, so a client-sent schema points at a
+ * model only where the model's input-mode JSON is that body, refs included,
+ * and writes the others in full. What makes the two differ: a `.default()`
+ * (optional in input mode), a transform (its input type), an object that
+ * strips undeclared keys (input mode doesn't write `additionalProperties:
+ * false`), or a model inside that differs.
+ */
+export function manifestModels(
+  models: ModelRegistry,
+  bodies: Readonly<Record<string, ClientManifestJsonSchema>>,
+): ManifestModels {
+  // Writing a model in full can change the input-mode JSON of a model that
+  // contains it, so drop the ones that differ until none does.
+  let input = models;
+  let same = sameInputBodies(input, bodies);
+  while (same.size < input.definitions.length) {
+    input = models.subset(same);
+    same = sameInputBodies(input, bodies);
+  }
+  return { output: models, input };
+}
+
+/** The models of `models` whose input-mode JSON, pointing at `models` only, is their body. */
+function sameInputBodies(
+  models: ModelRegistry,
+  bodies: Readonly<Record<string, ClientManifestJsonSchema>>,
+): Set<string> {
+  const inputBodies = serializeBodies(models, "input");
+  return new Set(
+    Object.keys(inputBodies).filter((name) =>
+      isDeepStrictEqual(inputBodies[name], bodies[name]),
+    ),
+  );
+}
+
+/** {@link serializeModels}, in `io` mode. */
+function serializeBodies(
+  models: ModelRegistry,
+  io: SchemaIo,
+): Record<string, ClientManifestJsonSchema> {
   const bodies: Record<string, ClientManifestJsonSchema> = {};
   for (const { name, schema, description } of models.definitions) {
-    const { $defs } = convert(schema, models);
+    const { $defs } = convert(schema, models, io);
     const defs = isJsonObject($defs) ? $defs : {};
     const body = defs[name];
     const { description: ownDescription, ...rest } = isJsonObject(body)

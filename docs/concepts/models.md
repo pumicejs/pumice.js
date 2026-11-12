@@ -109,6 +109,24 @@ A ref that starts with `#/models/` always names an entry of the manifest's own `
 `#/…` ref (`#/$defs/__schema0`, for a recursive schema that isn't a model) points into the schema
 it appears in. The exact contract is in [the development docs](../development/contract.md).
 
+### In request parts
+
+A model's body describes what the server sends (zod's output mode), and responses and throws
+point at it as above. Request parts (`body`, `query`, `headers`, `params`) describe what a client
+sends (input mode), so they point at a model only where its input-mode JSON is its body, and
+write it in full otherwise:
+
+| The model | In a request part |
+| --- | --- |
+| reads the same both ways: an enum, a `.strict()` object, a `.catchall()` object, made of such models | the ref, and `allOf` for an extension, as above |
+| a plain `z.object()`, which strips unknown keys: input mode leaves out `additionalProperties: false` | the model in full |
+| has a `.default()` (optional in input mode) or a transform (its input type), or contains a model that differs | the model in full, in input mode |
+
+A model in full is what the route would say without models, with refs to the models inside it
+that do match. A `.default()` at the use site keeps the ref and makes the field optional:
+`role: Role.default("member")` is `{ "default": "member", "$ref": "#/models/Role" }`, and `role`
+isn't in `required`.
+
 ### Which models each manifest lists
 
 - `server.getClientManifest()` lists every declared model.
@@ -121,7 +139,8 @@ it appears in. The exact contract is in [the development docs](../development/co
 
 zod moves a schema with `.meta({ id })` into the route schema's `$defs`, models or not. An id that
 equals a declared model's name on another schema throws: while the route registers, or, inside a
-model, when the manifest is first built. Rename one of them.
+model, when the first route registers (in an app without routes, when the manifest is first
+built). Rename one of them.
 
 ---
 
@@ -138,8 +157,11 @@ else about them is configurable yet.
 - ✅ Each model's JSON is written once, and `$ref` / `allOf` are what JSON Schema tools,
   OpenAPI and the client generator already read.
 - ❌ A `.pick()`, `.omit()` or `.partial()` subset stays inline until it is declared as a model.
-- ❌ Request bodies, queries and headers point at the same output-mode body as responses, so a
-  field with a `.default()` reads as required there too (REVIEW §1.10, on the roadmap).
+- ✅ Request parts say what a client sends: a field with a `.default()` is optional there and
+  required in responses.
+- ❌ A plain `z.object()` model, zod's default, is written in full in request parts, because
+  input mode leaves out its `additionalProperties: false`. A `.strict()` model keeps the ref
+  there, but then a request with an unknown key is a 400 instead of having the key stripped.
 - ❌ Output-mode objects say `additionalProperties: false`, so a strict validator finds an
   extension's `allOf` unsatisfiable. The manifests describe types and docs; nothing validates
   against them (responses aren't validated at all).
@@ -151,8 +173,8 @@ else about them is configurable yet.
 `ModelDefinition` is an object so that it can grow without changing a call site:
 
 1. Docs-only metadata goes into `DocsPlugin`, keyed by model name, like its tags.
-2. Input-mode bodies arrive with REVIEW §1.10: a request part refers to a model only where its
-   input-mode JSON equals the model's.
+2. A model whose input-mode JSON differs could get a second body for what clients send, so
+   request parts point at it too. Until then they write it in full.
 3. If recognition ever turns out ambiguous in practice, an explicit `extendModel(base, shape)`
    can override it. Plain `.extend()` keeps working.
 
