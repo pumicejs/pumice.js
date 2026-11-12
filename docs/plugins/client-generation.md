@@ -107,13 +107,16 @@ server.route()
 
 ```jsonc
 {
-  "version": 3,
+  "version": 4,
   "meta": {
     "generatedAt": "2026-06-25T17:53:21.000Z",
     "listeningSince": "2026-06-25T17:00:00.000Z",
     "framework": { "name": "pumice.js", "version": "0.0.16" }
   },
   "defaultRouteConfig": { /* server-wide route defaults */ },
+  "models": {
+    "User": { "type": "object", "properties": { /* ... */ } }
+  },
   "routes": [
     {
       "path": "/users/:id",
@@ -144,6 +147,14 @@ server.route()
 Routes are sorted alphabetically by `path`. Methods within a route are
 sorted by the canonical order (`get`, `post`, `put`, `patch`, `delete`,
 `options`, `any`) exported as `CLIENT_MANIFEST_METHOD_ORDER`.
+
+`models` holds the bodies of the [declared models](../concepts/models.md)
+the served routes use, directly or through other models, in declaration
+order (`{}` when there are none). Route schemas point at them with
+`{ "$ref": "#/models/<name>" }`, and an object that adds properties to a
+model is `allOf` of that ref and the extra properties. A model that only
+`exposeClient: false` routes use is left out; `server.getClientManifest()`
+lists them all.
 
 ### Type re-exports
 
@@ -179,7 +190,7 @@ instance handy.
 ## How Zod becomes JSON Schema
 
 The plugin uses Zod's built-in `toJSONSchema(schema, { unrepresentable: "any" })`
-with two tweaks:
+(output mode) with three tweaks:
 
 1. **`z.date()` / `z.coerce.date()`** are emitted as the JSON Schema for
    `z.iso.datetime()` (since "date" has no first-class JSON Schema). This
@@ -187,6 +198,8 @@ with two tweaks:
    transmitted over the wire.
 2. **`z.void()`** is emitted as `{ "type": "void" }` so client codegen can
    distinguish "empty body" from "any unknown body".
+3. **Declared models** become refs into the manifest's `models`
+   ([Models](../concepts/models.md)).
 
 For `BigInt` values that show up in `default` / `example` fields, they're
 JSON-serialized as strings (since JSON has no `BigInt`).
@@ -211,7 +224,8 @@ JSON-serialized as strings (since JSON has no `BigInt`).
   `server.getClientManifest()` under the hood, so any route hidden via
   `exposeClient: false` is _not_ automatically hidden from `/@docs`
   (and vice versa — `docs.hidden: true` doesn't hide from `/@client`).
-  Use both keys explicitly when you want to hide from both.
+  Use both keys explicitly when you want to hide from both. Each manifest
+  lists the models of the routes it shows.
 
 ---
 

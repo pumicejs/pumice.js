@@ -1,4 +1,5 @@
 import { z } from "pumice.js";
+import { Board } from "../../../../lib/schemas.js";
 import { server } from "../../../../server.js";
 
 // The same query as GET /orgs/:orgId/members: a schema two routes share.
@@ -18,5 +19,5 @@ server
       limit: z.number().int().max(100).optional(),
     }),
   )
-  .response(z.array(z.object({ id: z.number(), title: z.string() })))
+  .response(z.array(Board))
   .handle(() => []);

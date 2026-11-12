@@ -27,6 +27,7 @@ import type { ContextRefinementRule, ServerPlugin } from "../types/plugin.js";
 import { assertUniquePluginRegistration } from "../plugin-registration.js";
 import type { Simplify } from "../types/schema.js";
 import type { ClientManifest } from "../client-manifest.js";
+import type { ModelDefinition } from "../types/model.js";
 import { createApiJsonErrorResponse } from "../http/json-envelope.js";
 import { logInfo } from "../utils/log.js";
 import type { DeepMergeObjects } from "../utils/types.js";
@@ -89,6 +90,7 @@ export class Server<
    * @param options.basePath Subdirectory under `rootDir` that contains routes/middlewares. Defaults to `"routes"`.
    * @param options.rootDir Absolute (or `cwd`-relative) source root. Defaults to `<cwd>/src`.
    * @param options.config Server-wide defaults — currently `{ routes }` for default per-route config.
+   * @param options.models Models for the manifests, as with {@link Server.models}.
    *
    * The route pipeline is wired immediately, but no files are loaded and no
    * port is bound until {@link Server.listen} is called.
@@ -108,6 +110,9 @@ export class Server<
     this.routes = new RouteManager(this.app, rootDir, basePath, {
       defaultRouteConfig: this.configState.routes,
     });
+    if (options.models) {
+      this.models(options.models);
+    }
   }
 
   /**
@@ -368,6 +373,35 @@ export class Server<
         ? { listeningSince: this.clientManifestListeningSince }
         : undefined,
     );
+  }
+
+  /**
+   * Declares models: named schemas that `/@client` and `/@docs` describe once,
+   * under their top-level `models`, and that route schemas point at.
+   *
+   * Routes don't change. Wherever a route schema uses a declared schema (or a
+   * `.describe()`, `.meta()`, `.refine()` or `.brand()` of it), the manifests
+   * say `{ "$ref": "#/models/<name>" }`; an object that adds properties to a
+   * model (`Image.extend({ shareUrl })`) is `allOf` of that ref and the extra
+   * properties. Anything else stays written out in full. Appends to earlier
+   * calls; see `docs/concepts/models.md`.
+   *
+   * Throws when a name isn't PascalCase or is taken, when a schema is declared
+   * twice or has the same properties as another model, when a model is
+   * `z.void()`, and when a route has already registered: route schemas are
+   * serialized as routes register, so declare models first.
+   *
+   * @example
+   * ```ts
+   * server.models([
+   *   { name: "User", schema: UserSchema, description: "Someone with an account." },
+   *   { name: "Board", schema: BoardSchema },
+   * ]);
+   * ```
+   */
+  public models(definitions: readonly ModelDefinition[]): this {
+    this.routes.declareModels(definitions, "Server.models");
+    return this;
   }
 
   /**

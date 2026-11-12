@@ -15,7 +15,8 @@
   bindings: `call(server, "/x", { env: socket("198.51.100.1") })`. Give each test its own
   address from a documentation range so rate-limit buckets never collide.
 - **Pure logic** (path parsing, config merging, rate-limit algorithms, the body-limit
-  resolution) is tested directly in `test/units.test.ts`.
+  resolution) is tested directly in `test/units.test.ts`; how schemas are recognised as models
+  is tested on the serializer in `test/models.test.ts`, each JSON pinned.
 - **Console noise** from expected 500s is silenced with `vi.spyOn(console, "error")`, and the
   test asserts the log line.
 
@@ -29,6 +30,7 @@
 | `ratelimit`, `ratelimit-proxy` | every algorithm, scope, helper, header, `trustProxy`, `onLimitReached` |
 | `plugins` | authentication, CORS, logger, unique registration |
 | `contract` | the manifests (and the committed fixtures, see [contract.md](contract.md)) |
+| `models` | models declared through the builder, refs in bodies and throws, `models` pruned per manifest |
 | `../routes/app` | discovery in a project whose path contains `routes` |
 
 ## Bugs

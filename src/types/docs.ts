@@ -251,7 +251,7 @@ export type DocsManifestGroup = {
  * not render anything.
  */
 export type DocsManifest = {
-  version: 1;
+  version: 2;
   meta: {
     /** ISO-8601 timestamp the manifest was built. */
     generatedAt: string;
@@ -259,6 +259,12 @@ export type DocsManifest = {
   };
   /** Full tag registry, resolved with defaults applied. */
   tags: DocsManifestTag[];
+  /**
+   * The declared models the documented routes use, by name, in declaration
+   * order; the same bodies as the client manifest's `models`. Route schemas
+   * point at them with `{ "$ref": "#/models/<name>" }`.
+   */
+  models: Record<string, ClientManifestJsonSchema>;
   /** Group tree (sorted). Includes the synthesized `defaultGroup` if used. */
   groups: DocsManifestGroup[];
 };

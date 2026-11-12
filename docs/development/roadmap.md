@@ -28,6 +28,11 @@ A PR that builds an entry moves it to "Done"; one that finds something new adds 
   serializers are checked against them. Additive; the fixtures didn't change. Next, in client
   and docs: `import type` them from a dev dependency instead of the hand-written copies (their
   roadmaps).
+- 2026-11-12, models: `ModelDefinition`, `server.models()` / `ServerBuilder.models()` /
+  `new Server({ models })`; recognition by schema identity (refs, `allOf` extensions, the
+  override rule, model bodies in full); `models` in `/@client` v4 and `/@docs` v2, pruned per
+  manifest; the contract app and fixtures (`docs/concepts/models.md`). Breaking for consumers,
+  so with 0.2.0; client and docs follow in their own PRs.
 
 ## Bugs
 
@@ -74,7 +79,11 @@ pipeline. **Trigger:** with §1.7 (same place). Test: `ratelimit.test.ts`.
 
 `toJSONSchema(…, { io: "input" })` for body, query, headers and params; output for responses and
 throws. A contract change: regenerate the fixtures and drop the client's `default` workaround.
-**Trigger:** together with the client and docs fixture adoption. Test: `contract.test.ts`.
+With models, a request part that uses one points at its output-mode body too; with input mode, a
+part refers to a model only where its input-mode JSON equals the model's, and stays inline
+otherwise (`src/schema/json-schema.ts`). **Trigger:** together with the client and docs fixture
+adoption, ideally in the same 0.2.0 as models so consumers adapt once. Test:
+`contract.test.ts`.
 
 ### The manifest leaves out procedure params and throws (REVIEW §1.11) — medium
 
@@ -118,7 +127,9 @@ cookie. Test: `validation.test.ts`.
 
 Off in production unless an authenticator is given; drop `routeFile` and
 `beforeValidationHooksCount`. Needs both CLIs to send a header first (client and docs REVIEW
-§6.3, §5.2). **Trigger:** once the CLIs ship `--header`. Test: `contract.test.ts`.
+§6.3, §5.2). With models it also lists every model its routes use, internal ones included: no
+more than the inline copies said, but easier to read. **Trigger:** once the CLIs ship
+`--header`. Test: `contract.test.ts`.
 
 ### Uploads trust the client's type (REVIEW §2.5) — medium
 
@@ -146,6 +157,19 @@ plugin that needs a hook.
   and groups on every request instead of once at load (REVIEW §3). Test: `contract.test.ts`.
   **Trigger:** next docs plugin change.
 - **`sideEffects: false`** in package.json, once checked that no module has import-time effects.
+- **Models, what's deliberately not there yet** (`docs/concepts/models.md`):
+  - *Docs-only metadata* (label, group, order, hidden, examples): a `DocsPlugin` registry keyed
+    by model name, with `onUnknownModel`, like tags. Waits because no docs site needs it yet.
+    **Trigger:** the first docs site that wants model pages grouped or ordered. Declarations
+    don't change.
+  - *Subsets as such*: a `.pick()` / `.omit()` / `.partial()` of a model stays inline unless it
+    is declared itself; "a User with only id and avatar" would need an annotation that says
+    which fields. **Trigger:** a docs page that would read better that way.
+  - *An explicit `extendModel(base, shape)`*, as an override of the recognition, only if plain
+    `.extend()` turns out ambiguous in an app. **Trigger:** the first wrong `allOf` base seen in
+    a real manifest. Plain `.extend()` keeps working.
+  - *Generic models* (`Paginated<T>`): out of scope; a wrapper stays inline per route, with refs
+    inside it.
 
 ## Repository
 
@@ -169,3 +193,9 @@ Each with a leaning; the user decides.
 3. **Upload routes without a declared size** get the 1 MiB default. Leaning: keep it (safe by
    default) and say so in the release notes; the alternative is a higher default for multipart
    only.
+4. **The zod floor for models.** The peer range is `^4.3.6`; CI tests the lockfile's 4.6.7 only.
+   zod moves a root schema with an `id` into `$defs` only from 4.5, and its output differs in
+   other details between versions (nullable primitives, kept `id`s). The serializer puts a model
+   root behind a `z.lazy()` and drops the kept `id`, so models come out the same, and
+   `test/models.test.ts` passed locally on 4.3.6, 4.4.3, 4.5.0 and 4.6.7. Leaning: a CI job that runs `test/models.test.ts` with zod 4.3.6
+   rather than raising the floor; the contract fixtures stay pinned to the lockfile version.

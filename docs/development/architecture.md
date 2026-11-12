@@ -7,10 +7,10 @@
 | `src/index.ts` | The public API: every export users may rely on. Nothing else is public. |
 | `src/structures/server.ts` | `Server`: owns the Hono app, the plugins and the `RouteManager`; `load()`, `fetch()`, `listen()`, and the `route()` / `procedure()` / `middleware()` entry points. |
 | `src/builders/` | The fluent builders: `ServerBuilder`, the route chain (`route.ts`, mostly types), procedures, middleware. They collect a definition and hand it to the manager. |
-| `src/managers/routes.ts` | Discovery (walk, sort, import), registration (path, middlewares, manifest entry) and the per-request pipeline. |
-| `src/schema/` | `runtime.ts`: request validation, coercion, multipart extraction, error normalization, the `throws` contract. `guards.ts`: the duck-typed shape checks shared by runtime and manifest. |
+| `src/managers/routes.ts` | Discovery (walk, sort, import), registration (path, middlewares, manifest entry) and the per-request pipeline. Owns the declared models, so every route schema is serialized against them. |
+| `src/schema/` | `runtime.ts`: request validation, coercion, multipart extraction, error normalization, the `throws` contract. `guards.ts`: the duck-typed shape checks shared by runtime and manifest. `models.ts`: the model registry and how a schema is recognised as a model. `json-schema.ts`: Zod → JSON Schema for the manifests, with models as refs. |
 | `src/http/` | The JSON envelope (`json-envelope.ts`) and the body limit (`body-limit.ts`). |
-| `src/client-manifest.ts` | Turns registered routes into the client manifest (Zod → JSON Schema). |
+| `src/client-manifest.ts` | Turns registered routes and the declared models into the client manifest, and the types both manifests share. |
 | `src/config/routes.ts` | `mergeRouteConfig`: server defaults < route < method. |
 | `src/errors/api.ts` | `ApiError` and status texts. |
 | `src/parser.ts` | File path → URL path. |
@@ -70,6 +70,18 @@ plugin may:
   limiting). This is the seam today; a proper hook registry is on the roadmap.
 
 Plugins are applied in registration order, once, before discovery.
+
+## Models and the manifests
+
+A route's schemas are serialized once, when the route registers (`RouteManager.add()`), against
+the `ModelRegistry` the manager owns; that is why models must be declared before routes load. The
+registry gives zod a metadata registry that adds `id: <name>` to each declared schema, so zod
+writes every use of it as a `$defs` ref, and an `override` that rewrites an object sharing a
+model's property schemas into a ref or an `allOf` extension. `json-schema.ts` then lifts the
+model definitions out of each schema (`#/$defs/User` → `#/models/User`). The model bodies are
+serialized the same way, once, on the first `getClientManifest()`. Each plugin prunes `models` to
+the routes it serves (`referencedModels()`), which keeps the registry in the core: both manifests
+need it, and the core never imports a plugin.
 
 ## Import boundaries
 

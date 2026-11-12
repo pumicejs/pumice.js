@@ -8,6 +8,7 @@ import type { ServerPlugin } from "../types/plugin.js";
 import type { RouteMethod } from "../types/route.js";
 import {
   CLIENT_MANIFEST_METHOD_ORDER,
+  referencedModels,
   type ClientManifest,
   type ClientManifestMethod,
   type ClientManifestRoute,
@@ -426,6 +427,13 @@ function buildGroupTree(options: {
     .filter((node) => node.routes.length > 0 || node.children.length > 0);
 }
 
+function collectGroupRoutes(groups: DocsManifestGroup[]): DocsManifestRoute[] {
+  return groups.flatMap((group) => [
+    ...group.routes,
+    ...collectGroupRoutes(group.children),
+  ]);
+}
+
 function buildDocsManifest(
   clientManifest: ClientManifest,
   options: DocsPluginOptions,
@@ -538,13 +546,21 @@ function buildDocsManifest(
     toManifestTag,
   );
 
+  // Only the routes that made it into the tree, so a hidden route's models
+  // don't show up in the docs.
+  const documentedSchemas = collectGroupRoutes(groupTree).flatMap((route) => [
+    route.params,
+    route.schema,
+  ]);
+
   return {
-    version: 1,
+    version: 2,
     meta: {
       generatedAt: new Date().toISOString(),
       framework: clientManifest.meta.framework,
     },
     tags: manifestTags,
+    models: referencedModels(clientManifest.models, documentedSchemas),
     groups: groupTree,
   };
 }
@@ -579,7 +595,8 @@ function buildManifestRoute(
  * - **Route-config key**: `docs?: { tags?, group?, summary?, description?, deprecated?, hidden?, order?, examples? }`
  *   typed via the plugin's `TRouteConfigExtensions`.
  * - **HTTP route**: `GET <path>` (default `/@docs`) returning the
- *   {@link DocsManifest} (tag registry + sorted, nested group tree of routes).
+ *   {@link DocsManifest} (tag registry, the declared models the documented
+ *   routes use, and a sorted, nested group tree of routes).
  * - **Validation**: at boot, references from `docs.tags` / `docs.group` /
  *   `parent` are checked against the registry. The default is `warn`
  *   (drop + `console.warn`); configurable per kind to `throw` or `ignore`.

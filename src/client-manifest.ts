@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { z, toJSONSchema } from "zod";
 import { mergeRouteConfig } from "./config/routes.js";
 import { resolveBodyLimit } from "./http/body-limit.js";
 import type { RouteConfig } from "./types/config.js";
@@ -18,67 +17,24 @@ import {
   isThrowDescriptor,
   isThrowsCodeSchemaMap,
   isZodSchema,
+  isZodVoidSchema,
 } from "./schema/guards.js";
-
-/**
- * Zod `date` / `coerce.date()` cannot be expressed in JSON Schema; with
- * `unrepresentable: "any"` they become `{}`. We substitute the same JSON Schema
- * Zod emits for {@link z.iso.datetime} so clients can align with that contract.
- */
-function isZodDateSchema(schema: unknown): boolean {
-  const def = (schema as { _zod?: { def?: { type?: string } } })._zod?.def;
-  return def?.type === "date";
-}
-
-function isZodVoidSchema(schema: unknown): boolean {
-  const def = (schema as { _zod?: { def?: { type?: string } } })._zod?.def;
-  return def?.type === "void";
-}
-
-let isoDatetimeJsonSchemaFragment: Record<string, unknown> | undefined;
-
-function getIsoDatetimeJsonSchemaFragment(): Record<string, unknown> {
-  if (!isoDatetimeJsonSchemaFragment) {
-    const full = toJSONSchema(z.iso.datetime(), {
-      unrepresentable: "any",
-    }) as Record<string, unknown>;
-    const { $schema: _drop, ...fragment } = full;
-    isoDatetimeJsonSchemaFragment = fragment;
-  }
-  return isoDatetimeJsonSchemaFragment;
-}
-
-function zodToSerializableJsonSchema(
-  schema: z.ZodTypeAny,
-): ClientManifestJsonSchema {
-  if (isZodVoidSchema(schema)) {
-    return { type: "void" };
-  }
-
-  const payload = toJSONSchema(schema, {
-    unrepresentable: "any",
-    override({ zodSchema, jsonSchema }) {
-      if (isZodDateSchema(zodSchema)) {
-        const json = jsonSchema as Record<string, unknown>;
-        for (const key of Object.keys(json)) {
-          delete json[key];
-        }
-        Object.assign(json, getIsoDatetimeJsonSchemaFragment());
-      }
-    },
-  });
-  return JSON.parse(
-    JSON.stringify(payload, (_key, value) =>
-      typeof value === "bigint" ? value.toString() : value,
-    ),
-  );
-}
+import {
+  MODEL_REF_PREFIX,
+  reachableRefs,
+  zodToSerializableJsonSchema,
+} from "./schema/json-schema.js";
+import type { ModelRegistry } from "./schema/models.js";
 
 function serializeThrowStatusEntry(
   entry: unknown,
+  models: ModelRegistry,
 ): ClientManifestThrowEntry | undefined {
   if (isZodSchema(entry)) {
-    return { kind: "schema", jsonSchema: zodToSerializableJsonSchema(entry) };
+    return {
+      kind: "schema",
+      jsonSchema: zodToSerializableJsonSchema(entry, models),
+    };
   }
 
   if (isThrowDescriptor(entry)) {
@@ -87,17 +43,17 @@ function serializeThrowStatusEntry(
       message: entry.message,
       data:
         entry.data !== undefined
-          ? zodToSerializableJsonSchema(entry.data)
+          ? zodToSerializableJsonSchema(entry.data, models)
           : undefined,
       issues:
         entry.issues !== undefined
-          ? zodToSerializableJsonSchema(entry.issues)
+          ? zodToSerializableJsonSchema(entry.issues, models)
           : undefined,
     };
   }
 
   if (isThrowsCodeSchemaMap(entry)) {
-    return { kind: "codeMap", codes: serializeThrows(entry) };
+    return { kind: "codeMap", codes: serializeThrows(entry, models) };
   }
 
   return undefined;
@@ -106,10 +62,11 @@ function serializeThrowStatusEntry(
 /** A `throws` map, keyed by status or, one level down, by business code. */
 function serializeThrows(
   throws: RouteThrowsSchema | RouteThrowsCodeSchemaMap,
+  models: ModelRegistry,
 ): Record<string, ClientManifestThrowEntry> {
   const out: Record<string, ClientManifestThrowEntry> = {};
   for (const [key, entry] of Object.entries(throws)) {
-    const serialized = serializeThrowStatusEntry(entry);
+    const serialized = serializeThrowStatusEntry(entry, models);
     if (serialized !== undefined) {
       out[key] = serialized;
     }
@@ -119,6 +76,7 @@ function serializeThrows(
 
 function serializeResponse(
   response: RouteResponseSchema,
+  models: ModelRegistry,
 ): ClientManifestResponse {
   if (isZodSchema(response)) {
     if (isZodVoidSchema(response)) {
@@ -126,7 +84,7 @@ function serializeResponse(
     }
     return {
       shape: "single",
-      jsonSchema: zodToSerializableJsonSchema(response),
+      jsonSchema: zodToSerializableJsonSchema(response, models),
     };
   }
 
@@ -135,7 +93,7 @@ function serializeResponse(
     if (isZodSchema(schema)) {
       statuses[status] = isZodVoidSchema(schema)
         ? { type: "void" }
-        : zodToSerializableJsonSchema(schema);
+        : zodToSerializableJsonSchema(schema, models);
     }
   }
   return { shape: "statusMap", statuses };
@@ -143,6 +101,7 @@ function serializeResponse(
 
 function serializeRouteSchema(
   schema: RouteSchema | undefined,
+  models: ModelRegistry,
 ): ClientManifestSchema | undefined {
   if (!schema || Object.keys(schema).length === 0) {
     return undefined;
@@ -151,19 +110,19 @@ function serializeRouteSchema(
   const result: ClientManifestSchema = {};
 
   if (schema.body !== undefined && isZodSchema(schema.body)) {
-    result.body = zodToSerializableJsonSchema(schema.body);
+    result.body = zodToSerializableJsonSchema(schema.body, models);
   }
   if (schema.query !== undefined && isZodSchema(schema.query)) {
-    result.query = zodToSerializableJsonSchema(schema.query);
+    result.query = zodToSerializableJsonSchema(schema.query, models);
   }
   if (schema.headers !== undefined && isZodSchema(schema.headers)) {
-    result.headers = zodToSerializableJsonSchema(schema.headers);
+    result.headers = zodToSerializableJsonSchema(schema.headers, models);
   }
   if (schema.response !== undefined) {
-    result.response = serializeResponse(schema.response);
+    result.response = serializeResponse(schema.response, models);
   }
   if (schema.throws !== undefined) {
-    result.throws = serializeThrows(schema.throws);
+    result.throws = serializeThrows(schema.throws, models);
   }
   if (schema.file !== undefined) {
     result.file = {
@@ -191,12 +150,13 @@ function serializeRouteSchema(
 
 function serializeRouteParams(
   paramsSchema: RouteParamsSchema | undefined,
+  models: ModelRegistry,
 ): ClientManifestJsonSchema | undefined {
   if (!paramsSchema || !isZodSchema(paramsSchema)) {
     return undefined;
   }
 
-  return zodToSerializableJsonSchema(paramsSchema);
+  return zodToSerializableJsonSchema(paramsSchema, models);
 }
 
 /** Order used when serializing {@link ClientManifestRoute.methods}. */
@@ -237,6 +197,10 @@ export type RouteManifestSource = {
  * A JSON Schema (draft 2020-12) as zod writes it in output mode, with dates as
  * ISO date-time strings. `z.void()`, which JSON Schema can't express, is
  * `{ type: "void" }`.
+ *
+ * A `$ref` that starts with `#/models/` names an entry of the manifest's
+ * top-level `models`; any other `#/…` ref (`#/$defs/__schema0`) points into
+ * the schema it appears in.
  */
 export type ClientManifestJsonSchema = Record<string, unknown>;
 
@@ -335,9 +299,15 @@ export type ClientManifestMeta = {
 };
 
 export type ClientManifest = {
-  version: 3;
+  version: 4;
   meta: ClientManifestMeta;
   defaultRouteConfig: Record<string, unknown>;
+  /**
+   * The declared models' bodies by name, in declaration order (`{}` when there
+   * are none). `/@client` keeps those its routes reach; see
+   * {@link referencedModels}.
+   */
+  models: Record<string, ClientManifestJsonSchema>;
   routes: ClientManifestRoute[];
 };
 
@@ -370,6 +340,7 @@ export function appendClientManifestRoute(
     urlPath: string;
     defaultRouteConfig: RouteConfig<object>;
     definition: RouteManifestSource;
+    models: ModelRegistry;
   },
 ): void {
   const {
@@ -378,6 +349,7 @@ export function appendClientManifestRoute(
     urlPath,
     defaultRouteConfig,
     definition,
+    models,
   } = options;
 
   const routeLevelConfig = (definition.config ?? {}) as Record<string, unknown>;
@@ -401,7 +373,7 @@ export function appendClientManifestRoute(
       unknown
     >,
     beforeValidationHooksCount: definition.beforeValidationHooks?.length ?? 0,
-    schema: serializeRouteSchema(definition.schema),
+    schema: serializeRouteSchema(definition.schema, models),
   };
 
   const relativeRouteFile = relative(rootDirPath, routeFilePath).replaceAll(
@@ -418,12 +390,12 @@ export function appendClientManifestRoute(
         string,
         unknown
       >,
-      params: serializeRouteParams(definition.params),
+      params: serializeRouteParams(definition.params, models),
       methods: {},
     };
     routesByPath.set(urlPath, routeEntry);
   } else if (routeEntry.params === undefined) {
-    routeEntry.params = serializeRouteParams(definition.params);
+    routeEntry.params = serializeRouteParams(definition.params, models);
   }
 
   routeEntry.methods[definition.method] = methodEntry;
@@ -446,6 +418,7 @@ function buildManifestMeta(
 export function finalizeClientManifest(
   defaultRouteConfig: RouteConfig<object>,
   routesByPath: ReadonlyMap<string, ClientManifestRoute>,
+  models: Record<string, ClientManifestJsonSchema>,
   options: FinalizeClientManifestOptions = {},
 ): ClientManifest {
   const routes = [...routesByPath.values()]
@@ -465,11 +438,29 @@ export function finalizeClientManifest(
     }));
 
   return {
-    version: 3,
+    version: 4,
     meta: buildManifestMeta(options),
     defaultRouteConfig: JSON.parse(
       JSON.stringify(defaultRouteConfig ?? {}),
     ) as Record<string, unknown>,
+    models: JSON.parse(JSON.stringify(models)) as Record<
+      string,
+      ClientManifestJsonSchema
+    >,
     routes,
   };
+}
+
+/**
+ * The models that `schemas` (route schemas, params) point at, directly or
+ * through other models, in declaration order. Each manifest lists only these.
+ */
+export function referencedModels(
+  models: Readonly<Record<string, ClientManifestJsonSchema>>,
+  schemas: readonly unknown[],
+): Record<string, ClientManifestJsonSchema> {
+  const reached = reachableRefs(schemas, MODEL_REF_PREFIX, models);
+  return Object.fromEntries(
+    Object.entries(models).filter(([name]) => reached.has(name)),
+  );
 }

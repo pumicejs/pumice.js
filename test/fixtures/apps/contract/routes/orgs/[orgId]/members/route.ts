@@ -1,4 +1,5 @@
 import { z } from "pumice.js";
+import { User } from "../../../../lib/schemas.js";
 import { server } from "../../../../server.js";
 
 // The same query as GET /orgs/:orgId/boards: a schema two routes share.
@@ -12,5 +13,6 @@ server
       limit: z.number().int().max(100).optional(),
     }),
   )
-  .response(z.array(z.object({ userId: z.string() })))
+  // PartialUser's properties plus `role`: a list of PartialUsers, each plus a field.
+  .response(z.array(User.pick({ id: true, name: true, role: true })))
   .handle(() => []);

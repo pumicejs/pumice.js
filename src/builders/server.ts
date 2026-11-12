@@ -1,6 +1,8 @@
 import { Server } from "../structures/server.js";
 import type { ContextRefinementRule, ServerPlugin } from "../types/plugin.js";
 import { assertUniquePluginRegistration } from "../plugin-registration.js";
+import { assertModelDefinitions } from "../schema/models.js";
+import type { ModelDefinition } from "../types/model.js";
 import type { ServerConstructOptions } from "../types/server.js";
 import { mergeRouteConfig } from "../config/routes.js";
 import type { RouteConfig, ServerConfig } from "../types/config.js";
@@ -22,6 +24,7 @@ import type { DeepMergeObjects } from "../utils/types.js";
  *   ├── .basePath("routes")          // route discovery subdirectory (default: "routes")
  *   ├── .rootDir(resolve(...))       // source root (default: <cwd>/src)
  *   ├── .config({ routes: { ... } }) // server-wide / route-level defaults
+ *   ├── .models([{ name, schema }])  // named schemas for the manifests
  *   ├── .use(plugin)                 // register plugins (chainable, type-narrowing)
  *   └── .build()                     // returns a configured Server instance
  * ```
@@ -46,6 +49,7 @@ export class ServerBuilder<
 > {
   private readonly options: ServerConstructOptions<TRouteConfigExtensions> = {};
   private readonly plugins: ServerPlugin[] = [];
+  private readonly modelDefinitions: ModelDefinition[] = [];
 
   /**
    * Sets the subdirectory under `rootDir` that route / middleware files live in.
@@ -111,6 +115,27 @@ export class ServerBuilder<
   }
 
   /**
+   * Declares models for the manifests, appending to earlier calls.
+   *
+   * Mirrors {@link Server.models}, and checks the definitions the same way
+   * here, so a bad one throws at this call.
+   *
+   * @example
+   * ```ts
+   * builder.models([{ name: "User", schema: UserSchema }]);
+   * ```
+   */
+  public models(definitions: readonly ModelDefinition[]): this {
+    assertModelDefinitions(
+      this.modelDefinitions,
+      definitions,
+      "ServerBuilder.models",
+    );
+    this.modelDefinitions.push(...definitions);
+    return this;
+  }
+
+  /**
    * Registers a plugin to be applied when the server boots.
    *
    * Mirrors {@link Server.use}: each plugin can extend the request context,
@@ -170,7 +195,7 @@ export class ServerBuilder<
       TRouteConfigExtensions,
       TContextRefinementRules,
       TDefaultRouteConfig
-    >(this.options);
+    >({ ...this.options, models: this.modelDefinitions });
 
     for (const plugin of this.plugins) {
       server.use(plugin);

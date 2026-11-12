@@ -25,6 +25,7 @@ import {
   validateRouteRequest,
   validateRouteThrownError,
 } from "../schema/runtime.js";
+import { isZodObjectSchema } from "../schema/guards.js";
 import { getStatusMessage } from "../errors/api.js";
 import { enforceBodyLimit, resolveBodyLimit } from "../http/body-limit.js";
 import { resolveDefaultThrowMessage } from "./throw-message.js";
@@ -34,9 +35,13 @@ import {
   appendClientManifestRoute,
   finalizeClientManifest,
   type ClientManifest,
+  type ClientManifestJsonSchema,
   type ClientManifestRoutesByPath,
   type FinalizeClientManifestOptions,
 } from "../client-manifest.js";
+import { serializeModels } from "../schema/json-schema.js";
+import { ModelRegistry } from "../schema/models.js";
+import type { ModelDefinition } from "../types/model.js";
 
 type SupportedExtension = ".js" | ".mjs" | ".cjs" | ".ts" | ".mts" | ".cts";
 type ContextErrorInit = {
@@ -55,17 +60,6 @@ const SUPPORTED_EXTENSIONS: ReadonlySet<SupportedExtension> = new Set([
   ".mts",
   ".cts",
 ]);
-
-type ZodObjectLike = z.ZodObject<Record<string, z.ZodTypeAny>>;
-
-function isZodObjectSchema(schema: unknown): schema is ZodObjectLike {
-  return (
-    typeof schema === "object" &&
-    schema !== null &&
-    "shape" in schema &&
-    typeof (schema as { shape: unknown }).shape === "object"
-  );
-}
 
 /**
  * Produces a single params schema by layering each source's `shape` on top of
@@ -305,6 +299,10 @@ export class RouteManager {
   public readonly routeDescriptions = new Map<string, string>();
   private readonly clientManifestRoutesByPath: ClientManifestRoutesByPath =
     new Map();
+  /** The declared models; every route schema is serialized against them. */
+  private readonly models = new ModelRegistry();
+  /** The models' bodies, serialized on first use once every model is declared. */
+  private modelBodies?: Record<string, ClientManifestJsonSchema>;
   private readonly basePathSegments: string[];
   private currentRouteFilePath: string | null = null;
   private currentMiddlewareFilePath: string | null = null;
@@ -332,6 +330,23 @@ export class RouteManager {
 
   public setDefaultRouteConfig(config: RouteConfig<object> | undefined): void {
     this.defaultRouteConfig = config ?? {};
+  }
+
+  /**
+   * Declares models for the manifests. Route schemas are serialized when the
+   * route registers, so models come first: this throws once any route has.
+   */
+  public declareModels(
+    definitions: readonly ModelDefinition[],
+    where: string,
+  ): void {
+    if (this.clientManifestRoutesByPath.size > 0) {
+      throw new Error(
+        `${where}: declare models before routes load (${definitions.map((definition) => definition.name).join(", ")} came after the first route).`,
+      );
+    }
+    this.models.add(definitions, where);
+    this.modelBodies = undefined;
   }
 
   public async registerDiscovered(): Promise<string[]> {
@@ -457,6 +472,7 @@ export class RouteManager {
       urlPath: routePath,
       defaultRouteConfig: this.defaultRouteConfig,
       definition,
+      models: this.models,
     });
 
     logInfo(`Registered ${definition.method.toUpperCase()} ${routePath}`);
@@ -467,14 +483,17 @@ export class RouteManager {
   /**
    * JSON-serializable manifest of every registered route, grouped by path:
    * path-level params and a per-HTTP-method map (merged config, descriptors,
-   * Zod contracts as JSON Schema for client codegen).
+   * Zod contracts as JSON Schema for client codegen), plus every declared
+   * model.
    */
   public getClientManifest(
     options?: FinalizeClientManifestOptions,
   ): ClientManifest {
+    this.modelBodies ??= serializeModels(this.models);
     return finalizeClientManifest(
       this.defaultRouteConfig,
       this.clientManifestRoutesByPath,
+      this.modelBodies,
       options,
     );
   }

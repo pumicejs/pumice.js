@@ -15,6 +15,7 @@ export type {
   ServerConfig,
   ServerListenOptions,
 } from "./types/server.js";
+export type { ModelDefinition } from "./types/model.js";
 export type {
   AuthState,
   Authenticator,

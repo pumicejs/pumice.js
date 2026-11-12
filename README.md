@@ -34,6 +34,8 @@ API without ceremony.
   `c.error(...)` helpers that stay aligned with the declared schemas.
 - **Client manifest** — introspect every route, method, and schema at runtime
   for codegen tooling.
+- **Models** — declare `User` once; the manifests describe it once and every
+  route schema that returns it (or extends it) points there.
 - **File uploads** — `.file()` and `.files()` schema slices with type-safe
   access to parsed multipart uploads.
 
@@ -781,6 +783,34 @@ refinement** typing, so choose them to match your app's baseline.
 
 ---
 
+## Models
+
+Declare the schemas your API is about once, before routes load. The client
+and docs manifests then carry each model's JSON Schema once, under `models`,
+and route schemas point at it; routes stay as they are.
+
+```ts
+new ServerBuilder()
+  .models([
+    { name: "User", schema: UserSchema, description: "Someone with an account." },
+    { name: "Board", schema: BoardSchema },
+  ])
+  .build();
+
+server.route().get().response(z.array(UserSchema)).handle(/* ... */);
+// -> { "type": "array", "items": { "$ref": "#/models/User" } }
+
+server.route().get().response(UserSchema.extend({ isMe: z.boolean() })).handle(/* ... */);
+// -> { "allOf": [{ "$ref": "#/models/User" }, { "type": "object", "properties": { "isMe": … } }] }
+```
+
+A model is recognised by its schema objects: the declared instance (or a
+`.describe()`, `.brand()` of it) is a ref, an object that adds properties to
+it is `allOf`, and anything else (a `.pick()` subset, `.partial()`) stays
+written out in full. See [docs/concepts/models.md](./docs/concepts/models.md).
+
+---
+
 ## Response Envelopes (low-level)
 
 The framework-level JSON envelope is available as utilities for cases where
@@ -808,7 +838,7 @@ return createApiJsonErrorResponse(403, { code: "FORBIDDEN", message: "..." });
 
 ### Types
 
-- **Server**: `ServerConstructOptions`, `ServerConfig`, `ServerListenOptions`, `TrustProxy`
+- **Server**: `ServerConstructOptions`, `ServerConfig`, `ServerListenOptions`, `TrustProxy`, `ModelDefinition`
 - **Plugins**: `ServerPlugin`, `ServerPluginContext`, `AuthState`, `Authenticator`
 - **Route builder**: `RouteBuilderMethodStage`, `RouteBuilderMethodSelectionStage`, `RouteDefinition`, `RouteMethod`, `RouteConfig`, `RouteSchema`, `RouteResponseSchema`, `RouteThrowsSchema`, `RouteAuthenticationConfig`
 - **Procedures**: `ProcedureBuilderStage`, `RouteProcedureDefinition`, `RouteProcedureFactory`, `RouteProcedureHandler`, `RouteProcedureHandlerContext`, `AppliedRouteProcedure`, `RouteProcedureApplyOptions`, `ProcedureParamsSchema`, `ProcedureContributions`, `InferProcedureParamsValue`, `InferAppliedProcedureContributions`, `InferMergedParamsValue`
