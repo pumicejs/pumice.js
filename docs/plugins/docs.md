@@ -279,7 +279,7 @@ The plugin mounts `GET <path>` returning a JSON envelope wrapping a
   "code": "SUCCESS",
   "message": "OK",
   "data": {
-    "version": 1,
+    "version": 2,
     "meta": {
       "generatedAt": "2026-06-25T17:53:21.000Z",
       "framework": { "name": "pumice.js", "version": "0.0.16" }
@@ -288,6 +288,9 @@ The plugin mounts `GET <path>` returning a JSON envelope wrapping a
       { "name": "auth", "label": "Authentication", "color": "#22c55e" },
       { "name": "billing", "label": "Billing", "color": "#f59e0b" }
     ],
+    "models": {
+      "User": { "type": "object", "properties": { /* ... */ } }
+    },
     "groups": [
       {
         "name": "API",
@@ -317,9 +320,12 @@ The plugin mounts `GET <path>` returning a JSON envelope wrapping a
 ```
 
 Schema for each route uses the same JSON-Schema serialization as
-[`ClientGenerationPlugin`](./client-generation.md#what-zod-becomes-json-schema)
-(Zod → JSON Schema with `z.date()` mapped to `iso.datetime()` and
-`z.void()` preserved as `{ type: "void" }`).
+[`ClientGenerationPlugin`](./client-generation.md#how-zod-becomes-json-schema)
+(Zod → JSON Schema with `z.date()` mapped to `iso.datetime()`,
+`z.void()` preserved as `{ type: "void" }`, and declared
+[models](../concepts/models.md) as `{ "$ref": "#/models/<name>" }`).
+`models` holds the bodies of the models the documented routes use, in
+declaration order; a model only `docs.hidden` routes use is left out.
 
 Type re-exports:
 

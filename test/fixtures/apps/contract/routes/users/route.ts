@@ -34,9 +34,16 @@ server
   )
   .response({ 201: User })
   .throws({
-    409: { message: "Email already registered" },
+    // Not every property of a model (PartialUser has `name`), so inline.
+    409: {
+      message: "Email already registered",
+      data: User.pick({ id: true, email: true }),
+    },
     422: z.object({ field: z.string() }),
   })
   .handle((c) => {
-    throw c.error({ status: 409 });
+    throw c.error({
+      status: 409,
+      data: { id: "u1", email: c.body.email },
+    });
   });

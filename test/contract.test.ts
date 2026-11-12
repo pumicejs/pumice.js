@@ -60,10 +60,12 @@ describe("ClientGenerationPlugin", () => {
   const paths = () =>
     clientManifest.routes.map((route: { path: string }) => route.path);
 
-  it("serves manifest version 3 with every exposed route", () => {
-    expect(clientManifest.version).toBe(3);
+  it("serves manifest version 4 with every exposed route", () => {
+    expect(clientManifest.version).toBe(4);
     expect(paths()).toEqual([
       "/admin/jobs",
+      "/categories",
+      "/me",
       "/orgs/:orgId/boards",
       "/orgs/:orgId/boards/:boardId",
       "/orgs/:orgId/logo",
@@ -80,6 +82,17 @@ describe("ClientGenerationPlugin", () => {
     expect(paths()).not.toContain("/health");
   });
 
+  it("lists the models its routes use, in declaration order", () => {
+    // Health is only returned by GET /health, which isn't exposed.
+    expect(Object.keys(clientManifest.models)).toEqual([
+      "User",
+      "PartialUser",
+      "Board",
+      "Category",
+      "Job",
+    ]);
+  });
+
   it("serializes the route contract as JSON Schema", () => {
     const users = clientManifest.routes.find(
       (route: { path: string }) => route.path === "/users",
@@ -88,6 +101,7 @@ describe("ClientGenerationPlugin", () => {
       409: {
         kind: "descriptor",
         message: "Email already registered",
+        data: expect.objectContaining({ required: ["id", "email"] }),
       },
       422: {
         kind: "schema",
@@ -189,6 +203,18 @@ describe("DocsPlugin", () => {
     expect(JSON.stringify(docsManifest)).not.toContain(
       '"method":"post","path":"/admin/jobs"',
     );
+  });
+
+  it("serves version 2, with the models of the documented routes only", () => {
+    expect(docsManifest.version).toBe(2);
+    // Job is only returned by POST /admin/jobs, which is docs.hidden.
+    expect(Object.keys(docsManifest.models)).toEqual([
+      "User",
+      "PartialUser",
+      "Board",
+      "Category",
+      "Health",
+    ]);
   });
 
   it("carries tags, summaries, examples and deprecation", () => {

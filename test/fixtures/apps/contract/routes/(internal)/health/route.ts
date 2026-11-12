@@ -1,3 +1,4 @@
+import { Health } from "../../../lib/schemas.js";
 import { server } from "../../../server.js";
 
 server
@@ -9,4 +10,5 @@ server
     exposeClient: false,
     docs: { group: "ops" },
   })
-  .handle(() => "ok");
+  .response(Health)
+  .handle(() => ({ status: "ok" as const }));

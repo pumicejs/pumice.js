@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "meta": {
     "generatedAt": "2026-01-01T00:00:00.000Z",
     "framework": {
@@ -14,6 +14,147 @@
     "ratelimit": {
       "limit": 100,
       "timeframe": 60000
+    }
+  },
+  "models": {
+    "User": {
+      "description": "Someone with an account.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable user id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "admin",
+            "member"
+          ]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "bio": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "email",
+        "role",
+        "createdAt",
+        "bio",
+        "tags"
+      ],
+      "additionalProperties": false
+    },
+    "PartialUser": {
+      "description": "A user as lists show them.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable user id"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "Board": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "number"
+        },
+        "title": {
+          "type": "string"
+        },
+        "owner": {
+          "anyOf": [
+            {
+              "$ref": "#/models/User"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "owner"
+      ],
+      "additionalProperties": false
+    },
+    "Category": {
+      "description": "A category and its subcategories.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/models/Category"
+          }
+        }
+      },
+      "required": [
+        "name",
+        "children"
+      ],
+      "additionalProperties": false
+    },
+    "Job": {
+      "description": "A background job.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "queued",
+            "running",
+            "done"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "state"
+      ],
+      "additionalProperties": false
     }
   },
   "routes": [
@@ -57,7 +198,96 @@
             },
             "bodyLimit": 1048576
           },
-          "beforeValidationHooksCount": 2
+          "beforeValidationHooksCount": 2,
+          "schema": {
+            "response": {
+              "shape": "single",
+              "jsonSchema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "$ref": "#/models/Job"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "path": "/categories",
+      "routeFile": "routes/categories/route.ts",
+      "routeLevelConfig": {
+        "authentication": {
+          "required": false
+        }
+      },
+      "methods": {
+        "get": {
+          "descriptor": "List categories",
+          "effectiveConfig": {
+            "authentication": {
+              "required": false
+            },
+            "ratelimit": {
+              "limit": 100,
+              "timeframe": 60000
+            }
+          },
+          "beforeValidationHooksCount": 2,
+          "schema": {
+            "response": {
+              "shape": "single",
+              "jsonSchema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "array",
+                "items": {
+                  "$ref": "#/models/Category"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "path": "/me",
+      "routeFile": "routes/me/route.ts",
+      "routeLevelConfig": {},
+      "methods": {
+        "get": {
+          "descriptor": "Get the signed-in user",
+          "effectiveConfig": {
+            "authentication": {
+              "required": true
+            },
+            "ratelimit": {
+              "limit": 100,
+              "timeframe": 60000
+            }
+          },
+          "beforeValidationHooksCount": 2,
+          "schema": {
+            "response": {
+              "shape": "single",
+              "jsonSchema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "allOf": [
+                  {
+                    "$ref": "#/models/User"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "isMe": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "isMe"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
         }
       }
     },
@@ -119,20 +349,7 @@
                 "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "type": "array",
                 "items": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "number"
-                    },
-                    "title": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "title"
-                  ],
-                  "additionalProperties": false
+                  "$ref": "#/models/Board"
                 }
               }
             }
@@ -181,20 +398,7 @@
               "shape": "single",
               "jsonSchema": {
                 "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "number"
-                  },
-                  "title": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "id",
-                  "title"
-                ],
-                "additionalProperties": false
+                "$ref": "#/models/Board"
               }
             }
           }
@@ -365,16 +569,26 @@
                 "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "type": "array",
                 "items": {
-                  "type": "object",
-                  "properties": {
-                    "userId": {
-                      "type": "string"
+                  "allOf": [
+                    {
+                      "$ref": "#/models/PartialUser"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "admin",
+                            "member"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "role"
+                      ]
                     }
-                  },
-                  "required": [
-                    "userId"
-                  ],
-                  "additionalProperties": false
+                  ]
                 }
               }
             }
@@ -478,55 +692,7 @@
                 "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "type": "array",
                 "items": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string",
-                      "description": "Stable user id"
-                    },
-                    "name": {
-                      "type": "string"
-                    },
-                    "email": {
-                      "type": "string",
-                      "format": "email",
-                      "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
-                    },
-                    "role": {
-                      "type": "string",
-                      "enum": [
-                        "admin",
-                        "member"
-                      ]
-                    },
-                    "createdAt": {
-                      "type": "string",
-                      "format": "date-time",
-                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
-                    },
-                    "bio": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "tags": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "name",
-                    "email",
-                    "role",
-                    "createdAt",
-                    "bio",
-                    "tags"
-                  ],
-                  "additionalProperties": false
+                  "$ref": "#/models/User"
                 }
               }
             }
@@ -595,62 +761,34 @@
               "statuses": {
                 "201": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string",
-                      "description": "Stable user id"
-                    },
-                    "name": {
-                      "type": "string"
-                    },
-                    "email": {
-                      "type": "string",
-                      "format": "email",
-                      "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
-                    },
-                    "role": {
-                      "type": "string",
-                      "enum": [
-                        "admin",
-                        "member"
-                      ]
-                    },
-                    "createdAt": {
-                      "type": "string",
-                      "format": "date-time",
-                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
-                    },
-                    "bio": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "tags": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "name",
-                    "email",
-                    "role",
-                    "createdAt",
-                    "bio",
-                    "tags"
-                  ],
-                  "additionalProperties": false
+                  "$ref": "#/models/User"
                 }
               }
             },
             "throws": {
               "409": {
                 "kind": "descriptor",
-                "message": "Email already registered"
+                "message": "Email already registered",
+                "data": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "Stable user id"
+                    },
+                    "email": {
+                      "type": "string",
+                      "format": "email",
+                      "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "email"
+                  ],
+                  "additionalProperties": false
+                }
               },
               "422": {
                 "kind": "schema",
@@ -705,55 +843,7 @@
               "shape": "single",
               "jsonSchema": {
                 "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "description": "Stable user id"
-                  },
-                  "name": {
-                    "type": "string"
-                  },
-                  "email": {
-                    "type": "string",
-                    "format": "email",
-                    "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
-                  },
-                  "role": {
-                    "type": "string",
-                    "enum": [
-                      "admin",
-                      "member"
-                    ]
-                  },
-                  "createdAt": {
-                    "type": "string",
-                    "format": "date-time",
-                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
-                  },
-                  "bio": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "tags": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  }
-                },
-                "required": [
-                  "id",
-                  "name",
-                  "email",
-                  "role",
-                  "createdAt",
-                  "bio",
-                  "tags"
-                ],
-                "additionalProperties": false
+                "$ref": "#/models/User"
               }
             },
             "throws": {

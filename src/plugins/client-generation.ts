@@ -8,6 +8,7 @@ import type { ServerPlugin } from "../types/plugin.js";
 import type { RouteMethod } from "../types/route.js";
 import {
   CLIENT_MANIFEST_METHOD_ORDER,
+  referencedModels,
   type ClientManifest,
   type ClientManifestMethod,
   type ClientManifestRoute,
@@ -51,6 +52,7 @@ export type ClientGenerationPluginOptions = {
   ) => ClientManifestGenerationAccess | Promise<ClientManifestGenerationAccess>;
 };
 
+/** The manifest without `exposeClient: false` methods, and the models only they used. */
 function filterManifestByExposeClient(
   manifest: ClientManifest,
 ): ClientManifest {
@@ -72,7 +74,15 @@ function filterManifestByExposeClient(
     }
   }
 
-  return { ...manifest, routes };
+  const schemas = routes.flatMap((route) => [
+    route.params,
+    ...Object.values(route.methods).map((entry) => entry?.schema),
+  ]);
+  return {
+    ...manifest,
+    models: referencedModels(manifest.models, schemas),
+    routes,
+  };
 }
 
 /**
@@ -81,8 +91,9 @@ function filterManifestByExposeClient(
  * What it adds:
  * - **HTTP route**: registers `GET <path>` (default `/@client`) returning the
  *   filtered {@link ClientManifest} — every route's path, params, schemas
- *   (Zod → JSON Schema), per-method descriptors / merged config, and framework
- *   metadata (name, version, server-listening timestamp).
+ *   (Zod → JSON Schema), per-method descriptors / merged config, the declared
+ *   models those schemas use, and framework metadata (name, version,
+ *   server-listening timestamp).
  * - **Route-config key**: `exposeClient?: boolean`. Set per-route or per-method
  *   to `false` to hide the route from the generated manifest (still served
  *   normally, just not advertised). Defaults to included.

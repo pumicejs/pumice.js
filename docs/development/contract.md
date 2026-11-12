@@ -6,8 +6,8 @@ check generated clients into their repositories.
 
 | Endpoint | Built by | Shape | Consumed by |
 | --- | --- | --- | --- |
-| `GET /@client` (`ClientGenerationPlugin`) | `src/client-manifest.ts` | `ClientManifest`, `version: 3` | `pumice generate` (client); `pumice-docs` (docs) |
-| `GET /@docs` (`DocsPlugin`) | `src/plugins/docs.ts` | `DocsManifest`, `version: 1` | `pumice-docs` (docs) |
+| `GET /@client` (`ClientGenerationPlugin`) | `src/client-manifest.ts` | `ClientManifest`, `version: 4` | `pumice generate` (client); `pumice-docs` (docs) |
+| `GET /@docs` (`DocsPlugin`) | `src/plugins/docs.ts` | `DocsManifest`, `version: 2` | `pumice-docs` (docs) |
 
 Both are wrapped in the success envelope (`{ code, message, data }`).
 
@@ -22,6 +22,27 @@ config (merged, JSON-serializable keys only, with the `bodyLimit` that applies f
 but GET), and schema: `body`, `query`, `headers` (JSON Schema), `response` (`single` or
 `statusMap`, with `{ type: "void" }` for `z.void()`), `throws` (`descriptor`, `schema` or
 `codeMap` per status) and `file` / `files` (their config). Dates are ISO strings.
+
+Both manifests also carry `models`: the bodies of the declared models
+([`docs/concepts/models.md`](../concepts/models.md)) that their routes reach, directly or through
+other models, by name and in declaration order, `{}` when there are none.
+
+- **Refs.** A `$ref` that starts with `#/models/` names an entry of the same manifest's
+  `models`, wherever it appears: route schemas, params, throws, and model bodies. Every other
+  `#/…` ref (`#/$defs/__schema0`, `#`) points into the schema it appears in: the route schema
+  (`body`, `response.jsonSchema`, a status in `statuses`, …) or the model body.
+- **Model bodies** are JSON Schema without `$schema`, with the declared `description`, and are
+  always written in full: a model is never an extension of another.
+- **Extensions** are `allOf: [{ "$ref": "#/models/<name>" }, { "type": "object", "properties",
+  "required"? }]`: the second part holds only the extra properties and has no
+  `additionalProperties`. Use-site annotations (`description`) sit on the node beside `allOf`
+  or `$ref`. The base says `additionalProperties: false` (output mode), so a strict validator
+  finds the `allOf` unsatisfiable: the manifests describe types and docs, and nothing validates
+  against them.
+- **Request parts** (`body`, `query`, `headers`, `params`) refer to models too, and use the
+  output-mode body until REVIEW §1.10 lands.
+- **Pruning.** `/@client` lists the models of its exposed routes, `/@docs` those of the routes in
+  its group tree. An app that declares no models gets the route schemas it got before.
 
 ## The fixtures
 
@@ -40,8 +61,9 @@ The step by step is the `pumice-manifest-contract` skill
 
 1. **Append-only.** Add keys; never rename, remove or change the meaning of one. A consumer
    that doesn't know a key ignores it.
-2. **A change that consumers must understand bumps `version`** (`3` → `4`) and is called out in
-   the release notes. Consumers refuse versions they don't know.
+2. **A change that consumers must understand bumps `version`** (`/@client` went 3 → 4 and
+   `/@docs` 1 → 2 for models, because route schemas stopped being self-contained) and is called
+   out in the release notes. Consumers refuse versions they don't know.
 3. **Regenerate the fixtures** (`npm run fixtures:contract`), review the JSON diff as part of
    the PR, and extend the contract app if the new shape isn't in it yet.
 4. **The PR says what the client and docs repositories need**, and links their follow-up PRs or

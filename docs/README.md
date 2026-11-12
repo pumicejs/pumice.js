@@ -47,6 +47,7 @@ extends them with:
   - [Response Envelope](./concepts/response-envelope.md)
   - [File Uploads](./concepts/file-uploads.md)
   - [Error Handling](./concepts/error-handling.md)
+  - [Models](./concepts/models.md)
 
 ### Plugins
 
@@ -68,6 +69,7 @@ keys it contributes, type refinements, and recipes.
 | Per-tier ratelimits using `c.auth` | [`RatelimitPlugin` — Dynamic limits](./plugins/ratelimit.md#dynamic-limits) |
 | Throttle failed logins without consuming on success | [`RatelimitPlugin` — Manual mode](./plugins/ratelimit.md#manual-mode-cratelimiting-helpers) |
 | Hide a route from the manifest | [`ClientGenerationPlugin`](./plugins/client-generation.md) |
+| Describe `User` once in the manifests | [Models](./concepts/models.md) |
 | Group routes in the docs UI | [`DocsPlugin` — Grouping](./plugins/docs.md#grouping) |
 | Tag routes with colored chips | [`DocsPlugin` — Tags](./plugins/docs.md#tags) |
 

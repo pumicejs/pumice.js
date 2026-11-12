@@ -5,6 +5,14 @@ import {
   RatelimitPlugin,
   Server,
 } from "pumice.js";
+import {
+  Board,
+  Category,
+  Health,
+  Job,
+  PartialUser,
+  User,
+} from "./lib/schemas.js";
 
 /**
  * The contract app: one route for every shape that reaches the client and
@@ -12,6 +20,24 @@ import {
  * fixtures/contract/, which the client and docs repos test against.
  */
 export const server = new Server({ rootDir: import.meta.dirname })
+  .models([
+    { name: "User", schema: User, description: "Someone with an account." },
+    {
+      name: "PartialUser",
+      schema: PartialUser,
+      description: "A user as lists show them.",
+    },
+    { name: "Board", schema: Board },
+    {
+      name: "Category",
+      schema: Category,
+      description: "A category and its subcategories.",
+    },
+    // Only POST /admin/jobs returns it, which the docs hide.
+    { name: "Job", schema: Job, description: "A background job." },
+    // Only GET /health returns it, which the client manifest leaves out.
+    { name: "Health", schema: Health },
+  ])
   .use(
     AuthenticationPlugin({
       authenticator: (c) =>

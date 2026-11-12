@@ -1,4 +1,5 @@
 import type { ServerConfig } from "./config.js";
+import type { ModelDefinition } from "./model.js";
 export type { ServerConfig } from "./config.js";
 
 /**
@@ -19,6 +20,11 @@ export type ServerConstructOptions<TExtensions extends object = object> = {
    * Optional server defaults, including route-level defaults.
    */
   config?: ServerConfig<TExtensions>;
+  /**
+   * Models the manifests describe once and route schemas point at; the same
+   * as calling `server.models(models)` right after construction.
+   */
+  models?: readonly ModelDefinition[];
 };
 
 /**

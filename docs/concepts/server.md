@@ -187,13 +187,23 @@ if added twice with the same `id`. Custom plugins can opt into this — see
 
 ---
 
+## Declaring models
+
+`server.models([...])` (also `ServerBuilder.models()` and the `models`
+constructor option) names the schemas the manifests describe once and route
+schemas point at. Declare them before routes load: it throws once a route has
+registered. See [Models](./models.md).
+
+---
+
 ## Inspecting the server
 
 A few methods are useful for diagnostics or codegen:
 
 - **`server.getClientManifest()`** — JSON-serializable manifest of every
-  registered route (path, params, schemas, configs, methods, hooks). This
-  is what `ClientGenerationPlugin` serves at `/@client`, and what
+  registered route (path, params, schemas, configs, methods, hooks) and
+  every declared model. This is what `ClientGenerationPlugin` serves at
+  `/@client` (with the hidden routes and their models left out), and what
   `DocsPlugin` reads to build its grouping.
 - **`server.routes`** — the underlying `RouteManager`. Plugins that want
   to attach behavior per route wrap `server.routes.addFromCurrentFile`
