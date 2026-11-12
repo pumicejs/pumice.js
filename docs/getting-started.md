@@ -18,7 +18,7 @@ links at the bottom of this page.
 npm install pumice.js zod hono
 ```
 
-`zod` and `hono` are peer dependencies; Node.js 22 or later. `pumice.js`
+`zod` (4.5 or later) and `hono` are peer dependencies; Node.js 22 or later. `pumice.js`
 re-exports `z` from Zod so you don't normally need to import Zod directly.
 
 ### `package.json` essentials
