@@ -99,14 +99,33 @@ Performs three steps in order (the first two are `load()`, below):
    against the file that calls them: the innermost discovered route or
    middleware file on the call stack, so a route file that imports another
    still registers each file's routes under its own path.
-3. **`serve()`** — binds the port. On the `listening` callback, the server
-   stamps `clientManifestListeningSince` so the client manifest can include
-   it.
+3. **Bind** — binds the port (and `hostname`, if given), then stamps
+   `clientManifestListeningSince` so the client manifest can include it.
 
-Calling `listen()` twice doesn't load the server again, but it _will_ bind a
-second listener — you typically never want that. `listen()` resolves before
-the port is bound, and a bind error (port taken) is not reported through the
-promise yet (docs/development/roadmap.md).
+`listen()` resolves once the port is bound, to its address
+(`{ address, family, port }`, Node's `AddressInfo`; with `port: 0` the
+system picks a free port and `port` says which). It rejects when the port
+can't be bound (`EADDRINUSE`, `EACCES`) and when the server is already
+listening: one server has one listener at a time.
+
+### `close()` — stopping gracefully
+
+```ts
+process.once("SIGTERM", async () => {
+  await server.close();
+  process.exit(0);
+});
+```
+
+`close()` stops the listener without cutting anyone off. New connections
+are refused at once and idle keep-alive connections are closed. Requests
+under way finish and get their answers, each marked `Connection: close` so
+the client doesn't send another down that connection, and the promise
+resolves when the last connection has ended. It waits as long as those
+requests take, so race it against your own deadline if the process has one
+(a container's stop timeout). It resolves at once when the server isn't
+listening, every call while it closes gets the same promise, and `listen()`
+may bind again afterwards.
 
 ### `load()` and `fetch()` — without a port
 

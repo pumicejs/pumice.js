@@ -44,6 +44,14 @@ A PR that builds an entry moves it to "Done"; one that finds something new adds 
   a plain `z.object()` never is, so it is written in full there. Still `/@client` 4 and `/@docs`
   2, since neither was released: one breaking release with models. Next, in client: drop the
   `default` workaround for v4 manifests (its REVIEW §6.3).
+- 2026-11-16, `feat/server-close`: `server.close()` (Filip: "add a close"; a method on the
+  server, so `listen()` stays free to resolve to its address) and REVIEW §1.4 fixed. `listen()` resolves
+  once the port is bound, to its `AddressInfo` (`port: 0` works), rejects on a bind error instead
+  of crashing the process, takes a `hostname`, and refuses a second listener while one is open
+  (it used to bind another, so this is a behaviour change for the next minor). `close()` refuses
+  new connections, lets the answers under way finish with `Connection: close`, ends each
+  keep-alive connection as its answer goes out (Node would hold it for its 5 s keep-alive
+  timeout), and resolves when the last one has ended. Tests: `lifecycle.test.ts`, on a real port.
 
 ## Bugs
 
@@ -54,13 +62,6 @@ path, so a project under `…/routes/…` imports every source file, and `*.test
 next to routes are imported too. The next step: walk only `join(rootDir, basePath)`, match
 relative to it, skip `.d.ts`, `*.test.*` and `*.spec.*`. **Trigger:** next discovery change, or
 the first app that hits it. Tests: `discovery.test.ts`.
-
-### `listen()` resolves before binding; a bind error kills the process (REVIEW §1.4) — high
-
-Resolve in the `listening` callback, reject on `'error'`, return a handle with `close()`, accept
-`hostname`. Waits only for a decision on the handle's shape. **Trigger:** graceful shutdown in
-any app, or this release. Test: `it.todo` in `discovery.test.ts` (an `it.fails` would crash the
-worker).
 
 ### Query strings: repeated keys and output-mode coercion (REVIEW §1.5) — medium
 

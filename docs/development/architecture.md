@@ -5,7 +5,7 @@
 | Where | What |
 | --- | --- |
 | `src/index.ts` | The public API: every export users may rely on. Nothing else is public. |
-| `src/structures/server.ts` | `Server`: owns the Hono app, the plugins and the `RouteManager`; `load()`, `fetch()`, `listen()`, and the `route()` / `procedure()` / `middleware()` entry points. |
+| `src/structures/server.ts` | `Server`: owns the Hono app, the plugins and the `RouteManager`; `load()`, `fetch()`, `listen()`, `close()`, and the `route()` / `procedure()` / `middleware()` entry points. |
 | `src/builders/` | The fluent builders: `ServerBuilder`, the route chain (`route.ts`, mostly types), procedures, middleware. They collect a definition and hand it to the manager. |
 | `src/managers/routes.ts` | Discovery (walk, sort, import), registration (path, middlewares, manifest entry) and the per-request pipeline. Owns the declared models, so every route schema is serialized against them. |
 | `src/schema/` | `runtime.ts`: request validation, coercion, multipart extraction, error normalization, the `throws` contract. `guards.ts`: the duck-typed shape checks shared by runtime and manifest. `models.ts`: the model registry and how a schema is recognised as a model. `json-schema.ts`: Zod → JSON Schema for the manifests, with models as refs. |

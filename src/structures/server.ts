@@ -1,5 +1,7 @@
+import type { Server as HttpServer, ServerResponse } from "node:http";
+import type { AddressInfo } from "node:net";
 import { resolve } from "node:path";
-import { serve } from "@hono/node-server";
+import { createAdaptorServer } from "@hono/node-server";
 import { Hono } from "hono";
 import { RouteManager } from "../managers/routes.js";
 import {
@@ -45,6 +47,7 @@ import type { DeepMergeObjects } from "../utils/types.js";
  * 2. Call {@link Server.listen} to apply plugins, walk the route tree under
  *    `<rootDir>/<basePath>`, import every `route.{ts,js,...}` / `*.mw.ts` file,
  *    and bind the HTTP listener.
+ * 3. Call {@link Server.close} to stop it, letting the requests under way finish.
  *
  * Inside route files, callers reach back to the same instance to declare
  * routes, procedures, and middlewares:
@@ -80,9 +83,15 @@ export class Server<
   private readonly plugins: ServerPlugin[] = [];
   private pluginsApplied = false;
   private configState: ServerConfig<TRouteConfigExtensions>;
-  /** ISO-8601 from the Node `listening` callback after `serve()` binds. */
+  /** ISO-8601 of the moment {@link Server.listen} bound the port. */
   private clientManifestListeningSince?: string;
   private loading?: Promise<string[]>;
+  /** The HTTP listener from {@link Server.listen}, until {@link Server.close} has stopped it. */
+  private listener?: HttpServer;
+  /** Set while {@link Server.close} runs; every caller gets the same promise. */
+  private closing?: Promise<void>;
+  /** The answers under way on the listener, for {@link Server.close}. */
+  private readonly answering = new Set<ServerResponse>();
 
   /**
    * Creates a new server.
@@ -123,29 +132,116 @@ export class Server<
    * 2. Walks `<rootDir>/<basePath>` and imports each route / middleware file.
    *    During import, calls to `server.middleware()` / `server.route()` register
    *    handlers against the file currently being loaded.
-   * 3. Calls `serve()` to bind the configured port and resolves once listening.
+   * 3. Binds the port, and resolves once it's bound.
+   *
+   * Resolves to the bound address (its `port` is the one the system picked
+   * when `port` is `0`). Rejects when the port can't be bound (`EADDRINUSE`,
+   * `EACCES`), and when the server is already listening: one server has one
+   * listener, which {@link Server.close} stops.
    *
    * @param options.port HTTP port to bind. Defaults to `3000`.
+   * @param options.hostname Address to bind. Defaults to every address.
    *
    * @example
    * `await server.listen({ port: 8080 });`
    */
-  public async listen(options: ServerListenOptions = {}): Promise<void> {
+  public async listen(options: ServerListenOptions = {}): Promise<AddressInfo> {
+    if (this.listener) {
+      throw new Error(
+        "Server.listen: the server is already listening; call close() first",
+      );
+    }
     const port = options.port ?? 3000;
+    // Without a `createServer` option it's node:http's server, never HTTP/2.
+    const listener = createAdaptorServer({
+      fetch: this.app.fetch,
+      hostname: options.hostname,
+    }) as HttpServer;
+    // Taken before the first await, so a second listen() in the same tick is refused too.
+    this.listener = listener;
 
-    await this.load();
+    try {
+      await this.load();
+      await new Promise<void>((resolve, reject) => {
+        listener.once("error", reject);
+        listener.listen(port, options.hostname, () => {
+          listener.off("error", reject);
+          resolve();
+        });
+      });
+    } catch (error) {
+      this.listener = undefined;
+      throw error;
+    }
 
-    serve(
-      {
-        fetch: this.app.fetch,
-        port,
-      },
-      () => {
-        this.clientManifestListeningSince = new Date().toISOString();
-      },
+    this.trackAnswers(listener);
+    this.clientManifestListeningSince = new Date().toISOString();
+    // Bound to a port, not a pipe, so the address is never a string or null.
+    const address = listener.address() as AddressInfo;
+    logInfo(
+      `Server listening at http://${options.hostname ?? "localhost"}:${address.port}`,
     );
+    return address;
+  }
 
-    logInfo(`Server listening at http://localhost:${port}`);
+  /**
+   * Stops the HTTP listener, for a graceful shutdown.
+   *
+   * New connections are refused at once and idle keep-alive connections are
+   * closed. Requests under way finish and get their answers, each with
+   * `Connection: close`, and the promise resolves when the last connection has
+   * ended. It waits as long as they take: race it against your own deadline
+   * if the process has one. Resolves at once when the server isn't listening;
+   * calling it again while it closes returns the same promise. `listen()` may
+   * bind again afterwards.
+   *
+   * @example
+   * ```ts
+   * process.once("SIGTERM", async () => {
+   *   await server.close();
+   *   process.exit(0);
+   * });
+   * ```
+   */
+  public close(): Promise<void> {
+    const listener = this.listener;
+    if (!listener) {
+      return Promise.resolve();
+    }
+    this.closing ??= new Promise<void>((resolve, reject) => {
+      // Refuses new connections and ends the idle ones.
+      listener.close((error) => (error ? reject(error) : resolve()));
+      for (const response of this.answering) {
+        endsConnection(response);
+      }
+    }).finally(() => {
+      this.listener = undefined;
+      this.closing = undefined;
+    });
+    return this.closing;
+  }
+
+  /**
+   * Lets {@link Server.close} end keep-alive connections as their answers go
+   * out. Node's `close()` ends only the connections idle at that moment, and
+   * keeps one whose answer was still under way open for its keep-alive
+   * timeout, so the close would wait seconds more for nothing.
+   */
+  private trackAnswers(listener: HttpServer): void {
+    // First in line, so the header is set before the app's handler can answer.
+    listener.prependListener("request", (_request, response) => {
+      if (this.closing) {
+        endsConnection(response);
+      }
+      this.answering.add(response);
+      response.once("close", () => {
+        this.answering.delete(response);
+        if (this.closing) {
+          // The connection counts as idle only once the answer's `close` has run.
+          setImmediate(() => listener.closeIdleConnections());
+        }
+      });
+    });
   }
 
   /**
@@ -510,5 +606,16 @@ export class Server<
     }
 
     this.pluginsApplied = true;
+  }
+}
+
+/**
+ * Marks an answer as the last on its connection (`Connection: close`), when
+ * its headers haven't gone out yet: the client then doesn't send its next
+ * request down a connection the server is about to end.
+ */
+function endsConnection(response: ServerResponse): void {
+  if (!response.headersSent) {
+    response.setHeader("connection", "close");
   }
 }

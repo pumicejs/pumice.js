@@ -86,8 +86,10 @@ await server
 ```
 
 > Under the hood, `server.listen()` discovers every file under
-> `<rootDir>/<basePath>` (defaults: `<cwd>/src/routes`) and registers the
-> routes it finds.
+> `<rootDir>/<basePath>` (defaults: `<cwd>/src/routes`), registers the
+> routes it finds, and resolves once the port is bound. `server.close()`
+> stops it gracefully: new connections are refused, requests under way
+> finish.
 >
 > To use the server without a port (tests, other runtimes), call
 > `await server.load()` and send requests through `server.fetch(request)`:
