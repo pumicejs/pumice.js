@@ -32,8 +32,14 @@ export type ServerConstructOptions<TExtensions extends object = object> = {
  */
 export type ServerListenOptions = {
   /**
-   * HTTP port to bind to.
+   * HTTP port to bind to; `0` lets the system pick a free one (the resolved
+   * address says which).
    * Defaults to `3000`.
    */
   port?: number;
+  /**
+   * Address to bind to, such as `"127.0.0.1"` to accept local connections
+   * only. Defaults to every address of the machine, as Node's `listen()` does.
+   */
+  hostname?: string;
 };

@@ -41,10 +41,6 @@ describe("route discovery", () => {
     ).toThrow(/only be called while middleware files are being loaded/);
   });
 
-  it.todo(
-    "listen() rejects when the port is taken instead of crashing the process (REVIEW §1.4): an it.fails here would crash the test worker",
-  );
-
   it.fails(
     "applies a plugin registered after load() or refuses it (REVIEW §1.12)",
     async () => {

@@ -106,6 +106,9 @@ import { server } from "./server.js";
 await server.listen({ port: 3000 });
 ```
 
+To stop it on a deploy or Ctrl-C without cutting off requests under way,
+`await server.close()` ([Server — `close()`](./concepts/server.md#close--stopping-gracefully)).
+
 > Defaults: `rootDir = <cwd>/src`, `basePath = "routes"` → scans
 > `<cwd>/src/routes/**`. Override either with `.rootDir(...)` /
 > `.basePath(...)` on the builder.
